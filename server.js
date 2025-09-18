@@ -142,4 +142,35 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
+// Weekly auto default scheduler: Sunday 23:59 (server time)
+const DEFAULT_DOCTOR = 'Ths BSNT Phan Thị Minh Ý';
+const DEFAULT_ROOM = 'PK SPK Thành Ý';
+async function applyWeeklyDefaultsIfMissing() {
+  // Check if next week has any slots; if none, create defaults
+  // We use weekday-only schedule, so just check presence of any slot entries
+  const any = await prisma.slot.count();
+  if (any === 0) {
+    const sundayNote = 'CN có Test tiểu đường thai kì, các Bầu lưu ý phải nhịn ăn trước đó 10 tiếng.';
+    const ops = [];
+    ops.push(
+      prisma.slot.create({ data: { weekday: 0, startMin: 7*60, endMin: 11*60, doctor: DEFAULT_DOCTOR, room: DEFAULT_ROOM, note: sundayNote, status: 'AVAILABLE', capacity: 10 } })
+    );
+    for (let d = 1; d <= 6; d++) {
+      ops.push(
+        prisma.slot.create({ data: { weekday: d, startMin: 17*60, endMin: 20*60, doctor: DEFAULT_DOCTOR, room: DEFAULT_ROOM, note: '', status: 'AVAILABLE', capacity: 10 } })
+      );
+    }
+    await Promise.all(ops);
+    console.log('Applied weekly default schedule');
+  }
+}
+
+setInterval(async () => {
+  const now = new Date();
+  const isSunday = now.getDay() === 0; // 0=Sunday
+  if (isSunday && now.getHours() === 23 && now.getMinutes() === 59) {
+    try { await applyWeeklyDefaultsIfMissing(); } catch (e) { console.error('Auto default error', e); }
+  }
+}, 60 * 1000);
+
 

@@ -11,6 +11,21 @@
   </style>
   <script>
     const weekdayLabels = ['Chủ nhật','Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7'];
+    function getWeekDatesMondayFirst(){
+      const today = new Date();
+      const jsDay = today.getDay();
+      const indexFromMonday = (jsDay + 6) % 7;
+      const monday = new Date(today);
+      monday.setDate(today.getDate() - indexFromMonday);
+      const arr = [];
+      for(let i=0;i<7;i++){ const d = new Date(monday); d.setDate(monday.getDate()+i); arr.push(d); }
+      return arr;
+    }
+    function fmtDate(d){
+      const dd = String(d.getDate()).padStart(2,'0');
+      const mm = String(d.getMonth()+1).padStart(2,'0');
+      return `${dd}/${mm}`;
+    }
     async function loadSchedule(){
       const res = await fetch('/api/schedule');
       const data = await res.json();
@@ -18,10 +33,13 @@
       data.forEach(s=>{byDay[s.weekday].push(s)});
       const grid = document.getElementById('grid'); grid.innerHTML = '';
       const weekOrder = [1,2,3,4,5,6,0];
+      const weekDates = getWeekDatesMondayFirst();
       for(const d of weekOrder){
         const dayEl = document.createElement('div');
         dayEl.className='glass rounded-xl shadow border border-white/40 overflow-hidden backdrop-saturate-150 animate-[fadeIn_0.4s_ease]';
-        dayEl.innerHTML = `<div class="px-4 py-3 bg-white/60 border-b border-white/50 font-semibold">${weekdayLabels[d]}</div>`;
+        const offset = d===0 ? 6 : d-1;
+        const dateStr = fmtDate(weekDates[offset]);
+        dayEl.innerHTML = `<div class=\"px-4 py-3 bg-white/60 border-b border-white/50 font-semibold flex items-center justify-between\"><span>${weekdayLabels[d]}</span><span class=\"text-sm text-slate-600\">${dateStr}</span></div>`;
         const slots = byDay[d];
         if(slots.length===0){
           const empty = document.createElement('div'); empty.className='px-4 py-6 text-sm text-slate-600';
@@ -53,9 +71,12 @@
  </head>
 <body>
   <header class="sticky top-0 z-10 bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow">
-    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-      <h1 class="text-lg font-semibold tracking-wide">PHÒNG KHÁM SẢN PHỤ KHOA THÀNH Ý — Lịch Khám</h1>
-      <a class="text-white/80 hover:text-white text-sm" href="/admin.html">Quản trị</a>
+    <div class="max-w-6xl mx-auto px-4 py-4">
+      <div class="flex items-center justify-between">
+        <h1 class="text-lg font-semibold tracking-wide">PHÒNG KHÁM SẢN PHỤ KHOA THÀNH Ý — Lịch Khám</h1>
+        <a class="text-white/80 hover:text-white text-sm" href="/admin.html">Quản trị</a>
+      </div>
+      <div class="text-white/90 text-sm mt-1">Thạc sĩ Bác sĩ nội trú Phan Thị Minh Ý</div>
     </div>
   </header>
   <div class="relative min-h-screen bg-gradient-to-br from-slate-100 to-sky-100">
