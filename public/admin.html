@@ -179,7 +179,7 @@
 	}
 
     async function applyDefaults(){
-	  const sundayNote = 'CN có Test tiểu đường thai kì, các Bầu lưu ý phải nhịn ăn trước đó 10 tiếng.';
+	  const sundayNote = 'CN có Test tiểu đường thai kì, các Bầu lưu ý phải nhịn ăn trước đó 8 tiếng.';
 	  const doctor = 'Ths BSNT Phan Thị Minh Ý';
 	  const room = 'PK SPK Thành Ý';
 
@@ -239,6 +239,32 @@
 
 		await refresh();
 		alert(`Áp dụng lịch mặc định: tạo mới ${created} slot.\n` + (logs.length ? ('Ghi chú:\n- ' + logs.join('\n- ')) : ''));
+	  }catch(err){
+		alert(err.message);
+	  }
+	}
+
+	async function deleteAllSlots(reseed){
+	  if(!token){ alert('Vui lòng đăng nhập'); return; }
+
+	  // Xác nhận 2 bước cho an toàn
+	  if(!confirm('Bạn chắc chắn muốn XOÁ TẤT CẢ lịch? Hành động này không thể hoàn tác.')) return;
+	  const confirmWord = prompt('Gõ "XOA" để xác nhận:');
+	  if((confirmWord || '').toUpperCase() !== 'XOA'){ alert('Huỷ thao tác.'); return; }
+
+	  try{
+		const url = '/api/admin/slots/purge' + (reseed ? '?defaults=1' : '');
+		const r = await fetch(url, {
+		  method: 'DELETE',
+		  headers: { 'Authorization': 'Bearer ' + token }
+		});
+		if(!r.ok){
+		  const t = await r.json().catch(()=>({}));
+		  throw new Error(t.error || 'Xoá tất cả thất bại');
+		}
+		const res = await r.json();
+		alert(`Đã xoá ${res.deleted || 0} slot.` + (res.reseeded ? '\nĐã tạo lại lịch mặc định.' : ''));
+		await refresh();
 	  }catch(err){
 		alert(err.message);
 	  }
@@ -359,9 +385,14 @@
       <div class="glass border border-white/10 rounded-xl overflow-hidden">
         <div class="flex flex-col gap-3 p-4">
           <div class="flex items-center justify-between">
-            <div class="text-slate-200 font-medium">Đóng cửa theo ngày</div>
-            <button class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white" onclick="applyDefaults()">Áp dụng lịch mặc định</button>
-          </div>
+			  <div class="text-slate-200 font-medium">Đóng cửa theo ngày</div>
+			  <div class="flex items-center gap-2">
+				<button class="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white"
+						onclick="deleteAllSlots(false)">Xoá tất cả lịch</button>
+				<button class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white"
+						onclick="applyDefaults()">Áp dụng lịch mặc định</button>
+			  </div>
+			</div>
           <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
             <label class="flex items-center gap-2 text-slate-200"><input id="toggleClose_1" type="checkbox" onchange="onToggleClosed(1,this)" class="accent-rose-500"> T2</label>
             <label class="flex items-center gap-2 text-slate-200"><input id="toggleClose_2" type="checkbox" onchange="onToggleClosed(2,this)" class="accent-rose-500"> T3</label>

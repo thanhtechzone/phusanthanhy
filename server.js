@@ -31,6 +31,14 @@ function authMiddleware(req, res, next) {
   }
 }
 
+function adminOnly(req, res, next) {
+  if (!req.user || req.user.role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Admin only' });
+  }
+  next();
+}
+
+
 function toMinutes(timeStr) {
   // expects HH:MM
   const [h, m] = timeStr.split(':').map((x) => parseInt(x, 10));
@@ -128,6 +136,24 @@ app.put('/api/admin/slots/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// DELETE ALL slots (optional reseed defaults with ?defaults=1)
+app.delete('/api/admin/slots/purge', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const reseed = String(req.query.defaults || '').toLowerCase();
+    const doReseed = reseed === '1' || reseed === 'true';
+
+    const result = await prisma.slot.deleteMany(); // { count }
+    if (doReseed) {
+      await applyWeeklyDefaultsIfMissing();
+    }
+    res.json({ ok: true, deleted: result.count, reseeded: doReseed });
+  } catch (e) {
+    console.error('Purge error', e);
+    res.status(500).json({ error: 'Purge failed' });
+  }
+});
+
+
 app.delete('/api/admin/slots/:id', authMiddleware, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   try {
@@ -150,7 +176,7 @@ async function applyWeeklyDefaultsIfMissing() {
   // We use weekday-only schedule, so just check presence of any slot entries
   const any = await prisma.slot.count();
   if (any === 0) {
-    const sundayNote = 'CN có Test tiểu đường thai kì, các Bầu lưu ý phải nhịn ăn trước đó 10 tiếng.';
+    const sundayNote = 'CN có Test tiểu đường thai kì, các Bầu lưu ý phải nhịn ăn trước đó 6 tiếng.';
     const ops = [];
     ops.push(
       prisma.slot.create({ data: { weekday: 0, startMin: 7*60, endMin: 11*60, doctor: DEFAULT_DOCTOR, room: DEFAULT_ROOM, note: sundayNote, status: 'AVAILABLE', capacity: 10 } })
