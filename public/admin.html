@@ -89,20 +89,30 @@
     }
 
     async function onSubmit(e){
-      e.preventDefault();
-      try{
-        const payload = formToPayload();
-        if(editingId){
-          await api.update(token, editingId, payload);
-        }else{
-          await api.create(token, payload);
-        }
-        document.forms.slotForm.reset();
-        editingId = null;
-        document.getElementById('submitBtn').textContent = 'Thêm mới';
-        await refresh();
-      }catch(err){ alert(err.message) }
-    }
+	  e.preventDefault();
+	  try{
+		const payload = formToPayload();
+
+		// 1) Không cho phép giao thoa khi người dùng nhập tay
+		const conflicts = findConflicts(payload.weekday, payload.start, payload.end, editingId);
+		if(conflicts.length){
+		  const list = conflicts.map(s=>`#${s.id} ${s.start}-${s.end} ${s.status==='CLOSED'?'Đóng':'Mở'}`).join('\n');
+		  alert('Khung giờ bạn nhập bị giao thoa với:\n' + list + '\nVui lòng sửa hoặc xoá trước.');
+		  return;
+		}
+
+		// 2) Tạo/cập nhật
+		if(editingId){
+		  await api.update(token, editingId, payload);
+		}else{
+		  await api.create(token, payload);
+		}
+		document.forms.slotForm.reset();
+		editingId = null;
+		document.getElementById('submitBtn').textContent = 'Thêm mới';
+		await refresh();
+	  }catch(err){ alert(err.message) }
+	}
 
     async function onLogin(e){
       e.preventDefault();
@@ -132,6 +142,15 @@
       window.scrollTo({top:0,behavior:'smooth'});
     }
 
+	function toMin(t){ const [h,m]=t.split(':').map(Number); return h*60+m; }
+	function isOverlap(aStart,aEnd,bStart,bEnd){
+	  return Math.min(toMin(aEnd), toMin(bEnd)) > Math.max(toMin(aStart), toMin(bStart));
+	}
+	function findConflicts(weekday, start, end, exceptId=null){
+	  return cachedData.filter(
+		s => s.weekday===weekday && s.id!==exceptId && isOverlap(s.start, s.end, start, end)
+	  );
+	}
     async function onDelete(id){
       if(!confirm('Xoá khung giờ #' + id + ' ?')) return;
       try{ await api.remove(token, id); await refresh(); }catch(err){ alert(err.message) }
@@ -160,28 +179,70 @@
 	}
 
     async function applyDefaults(){
-      const sundayNote = 'CN có Test tiểu đường thai kì, các Bầu lưu ý phải nhịn ăn trước đó 10 tiếng.';
-      const doctor = 'Ths BSNT Phan Thị Minh Ý';
-      const room = 'PK SPK Thành Ý';
-      const toCreate = [];
-      // CN (0): 07:00-11:00 nếu chưa tồn tại
-      if(!cachedData.some(s=>s.weekday===0 && s.start==='07:00' && s.end==='11:00' && s.status!=='CLOSED')){
-        toCreate.push({weekday:0,start:'07:00',end:'11:00',doctor,room,note:sundayNote,status:'AVAILABLE',capacity:10});
-      }
-      // T2-T7 (1-6): 17:00-20:00 nếu chưa tồn tại
-      for(let d=1; d<=6; d++){
-        const dup = cachedData.some(s=>s.weekday===d && s.start==='17:00' && s.end==='20:00' && s.status!=='CLOSED');
-        if(!dup){
-          toCreate.push({weekday:d,start:'17:00',end:'20:00',doctor,room,note:'',status:'AVAILABLE',capacity:10});
-        }
-      }
-      if(toCreate.length===0){ alert('Lịch mặc định đã tồn tại đầy đủ.'); return }
-      try{
-        await Promise.all(toCreate.map(p=>api.create(token,p)));
-        await refresh();
-        alert('Đã áp dụng lịch mặc định (bỏ qua mục đã có).');
-      }catch(err){ alert(err.message) }
-    }
+	  const sundayNote = 'CN có Test tiểu đường thai kì, các Bầu lưu ý phải nhịn ăn trước đó 10 tiếng.';
+	  const doctor = 'Ths BSNT Phan Thị Minh Ý';
+	  const room = 'PK SPK Thành Ý';
+
+	  // Định nghĩa các slot mặc định sẽ cố gắng tạo
+	  const plan = [];
+
+	  // CN (0): 07:00-11:00
+	  plan.push({weekday:0,start:'07:00',end:'11:00',doctor,room,note:sundayNote,status:'AVAILABLE',capacity:10});
+
+	  // T2-T7 (1-6): 17:00-20:00
+	  for(let d=1; d<=6; d++){
+		plan.push({weekday:d,start:'17:00',end:'20:00',doctor,room,note:'',status:'AVAILABLE',capacity:10});
+	  }
+
+	  const logs = [];
+	  let created = 0;
+
+	  try{
+		for(const p of plan){
+		  // 1) Nếu đã có slot y hệt (cùng weekday, start, end, status) → bỏ qua (tránh duplicate)
+		  const exactDup = cachedData.some(
+			s=> s.weekday===p.weekday && s.start===p.start && s.end===p.end && s.status===p.status
+		  );
+		  if(exactDup){
+			logs.push(`Bỏ qua do đã tồn tại: Thứ ${p.weekday} ${p.start}-${p.end}`);
+			continue;
+		  }
+
+		  // 2) Tìm các slot giao thoa
+		  let conflicts = findConflicts(p.weekday, p.start, p.end);
+
+		  // 2a) Nếu có CLOSED all-day → xoá trước (không bỏ qua all-day, mà xử lý dứt điểm)
+		  const closedAllDay = conflicts.filter(s=>s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
+		  if(closedAllDay.length){
+			for(const s of closedAllDay){ await api.remove(token, s.id); }
+			// refresh dữ liệu cục bộ để bước sau chính xác
+			const refreshed = await api.list();
+			cachedData = refreshed;
+			// tính lại conflicts sau khi xoá all-day
+			conflicts = findConflicts(p.weekday, p.start, p.end);
+		  }
+
+		  // 2b) Nếu vẫn còn xung đột với slot khác (OPEN/CLOSED lẻ tẻ) → bỏ qua để không tạo giao thoa
+		  if(conflicts.length){
+			const list = conflicts.map(s=>`#${s.id} ${s.start}-${s.end} ${s.status==='CLOSED'?'Đóng':'Mở'}`).join(', ');
+			logs.push(`Không thể tạo Thứ ${p.weekday} ${p.start}-${p.end} vì giao thoa với: ${list}`);
+			continue;
+		  }
+
+		  // 3) Không còn xung đột → tạo
+		  await api.create(token, p);
+		  created++;
+		  // cập nhật cache để vòng lặp tiếp theo dùng
+		  const refreshed2 = await api.list();
+		  cachedData = refreshed2;
+		}
+
+		await refresh();
+		alert(`Áp dụng lịch mặc định: tạo mới ${created} slot.\n` + (logs.length ? ('Ghi chú:\n- ' + logs.join('\n- ')) : ''));
+	  }catch(err){
+		alert(err.message);
+	  }
+	}
 
     async function onToggleClosed(day, el){
 	  try{
