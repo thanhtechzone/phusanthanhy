@@ -20,27 +20,24 @@ enum Role {
 }
 
 model Slot {
-  id        Int         @id @default(autoincrement())
+  id        Int        @id @default(autoincrement())
   weekday   Int
   startMin  Int
   endMin    Int
   doctor    String
   room      String
   note      String?
-  status    SlotStatus  @default(AVAILABLE)
+  status    SlotStatus @default(AVAILABLE)
   capacity  Int
-  weekStart DateTime?   // <-- NEW: thứ Hai (00:00 UTC) đại diện tuần của slot
+  weekStart DateTime? // <-- NEW: thứ Hai (00:00 UTC) đại diện tuần của slot
 
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([weekStart, weekday, startMin])
 }
-
 
 enum SlotStatus {
   AVAILABLE
   CLOSED
 }
-
-
