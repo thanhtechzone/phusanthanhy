@@ -36,9 +36,15 @@
 
     let token = localStorage.getItem('ty_token')||'';
     let editingId = null;
+    let cachedData = [];
+
+    function isClosedAllDay(day){
+      return cachedData.some(s=>s.weekday===day && s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
+    }
 
     async function refresh(){
       const data = await api.list();
+      cachedData = data;
       const tbody = document.getElementById('tbody');
       tbody.innerHTML = '';
       data.forEach(s=>{
@@ -61,6 +67,10 @@
           </td>`;
         tbody.appendChild(tr);
       })
+      for(let d=0; d<7; d++){
+        const cb = document.getElementById('toggleClose_'+d);
+        if(cb) cb.checked = isClosedAllDay(d);
+      }
     }
 
     function formToPayload(){
@@ -139,6 +149,30 @@
         document.getElementById('closeReason').value='';
         await refresh();
       }catch(err){ alert(err.message) }
+    }
+
+    async function applyDefaults(){
+      const sundayNote = 'CN có Test tiểu đường thai kì, các Bầu lưu ý phải nhịn ăn trước đó 10 tiếng.';
+      const calls = [];
+      // CN (0): 07:00-11:00
+      calls.push(api.create(token,{weekday:0,start:'07:00',end:'11:00',doctor:'-',room:'-',note:sundayNote,status:'AVAILABLE',capacity:20}));
+      // T2-T7 (1-6): 17:00-20:00
+      for(let d=1; d<=6; d++){
+        calls.push(api.create(token,{weekday:d,start:'17:00',end:'20:00',doctor:'-',room:'-',note:'',status:'AVAILABLE',capacity:20}));
+      }
+      try{ await Promise.all(calls); await refresh(); alert('Đã áp dụng lịch mặc định.'); }catch(err){ alert(err.message) }
+    }
+
+    async function onToggleClosed(day, el){
+      try{
+        if(el.checked){
+          await api.create(token,{weekday:day,start:'00:00',end:'23:59',doctor:'-',room:'-',note:'Đóng cửa',status:'CLOSED',capacity:0});
+        }else{
+          const targets = cachedData.filter(s=>s.weekday===day && s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
+          for(const s of targets){ await api.remove(token, s.id); }
+        }
+        await refresh();
+      }catch(err){ alert(err.message); el.checked = !el.checked; }
     }
   </script>
 </head>
@@ -243,6 +277,22 @@
       </div>
 
       <div class="glass border border-white/10 rounded-xl overflow-hidden">
+        <div class="flex flex-col gap-3 p-4">
+          <div class="flex items-center justify-between">
+            <div class="text-slate-200 font-medium">Đóng cửa theo ngày</div>
+            <button class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white" onclick="applyDefaults()">Áp dụng lịch mặc định</button>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+            <label class="flex items-center gap-2 text-slate-200"><input id="toggleClose_1" type="checkbox" onchange="onToggleClosed(1,this)" class="accent-rose-500"> T2</label>
+            <label class="flex items-center gap-2 text-slate-200"><input id="toggleClose_2" type="checkbox" onchange="onToggleClosed(2,this)" class="accent-rose-500"> T3</label>
+            <label class="flex items-center gap-2 text-slate-200"><input id="toggleClose_3" type="checkbox" onchange="onToggleClosed(3,this)" class="accent-rose-500"> T4</label>
+            <label class="flex items-center gap-2 text-slate-200"><input id="toggleClose_4" type="checkbox" onchange="onToggleClosed(4,this)" class="accent-rose-500"> T5</label>
+            <label class="flex items-center gap-2 text-slate-200"><input id="toggleClose_5" type="checkbox" onchange="onToggleClosed(5,this)" class="accent-rose-500"> T6</label>
+            <label class="flex items-center gap-2 text-slate-200"><input id="toggleClose_6" type="checkbox" onchange="onToggleClosed(6,this)" class="accent-rose-500"> T7</label>
+            <label class="flex items-center gap-2 text-slate-200"><input id="toggleClose_0" type="checkbox" onchange="onToggleClosed(0,this)" class="accent-rose-500"> CN</label>
+          </div>
+          <div class="text-xs text-slate-400">Bật công tắc để tạo slot Đóng cửa (00:00–23:59). Tắt để mở lại ngày đó.</div>
+        </div>
         <table class="w-full text-sm">
           <thead class="bg-white/10 text-slate-200">
             <tr>
