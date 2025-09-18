@@ -6,7 +6,7 @@ const bcrypt = require('bcrypt');
 const prisma = new PrismaClient();
 
 async function main() {
-  const adminEmail = 'admin@thanhy-clinic.vn';
+  const adminEmail = 'admin@thanhy.vn';
   const adminPassword = 'admin123';
 
   const passwordHash = await bcrypt.hash(adminPassword, 10);
