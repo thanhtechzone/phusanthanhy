@@ -153,12 +153,14 @@
 
     async function applyDefaults(){
       const sundayNote = 'CN có Test tiểu đường thai kì, các Bầu lưu ý phải nhịn ăn trước đó 10 tiếng.';
+      const doctor = 'Ths BSNT Phan Thị Minh Ý';
+      const room = 'PK SPK Thành Ý';
       const calls = [];
-      // CN (0): 07:00-11:00
-      calls.push(api.create(token,{weekday:0,start:'07:00',end:'11:00',doctor:'-',room:'-',note:sundayNote,status:'AVAILABLE',capacity:20}));
+      // CN (0): 07:00-11:00 với ghi chú đặc biệt
+      calls.push(api.create(token,{weekday:0,start:'07:00',end:'11:00',doctor,room,note:sundayNote,status:'AVAILABLE',capacity:10}));
       // T2-T7 (1-6): 17:00-20:00
       for(let d=1; d<=6; d++){
-        calls.push(api.create(token,{weekday:d,start:'17:00',end:'20:00',doctor:'-',room:'-',note:'',status:'AVAILABLE',capacity:20}));
+        calls.push(api.create(token,{weekday:d,start:'17:00',end:'20:00',doctor,room,note:'',status:'AVAILABLE',capacity:10}));
       }
       try{ await Promise.all(calls); await refresh(); alert('Đã áp dụng lịch mặc định.'); }catch(err){ alert(err.message) }
     }
@@ -230,16 +232,16 @@
             </div>
             <div>
               <label class="block text-slate-300 text-sm mb-1">Bác sĩ</label>
-              <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="doctor" type="text" placeholder="Nguyễn Văn A" required />
+              <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="doctor" type="text" value="Ths BSNT Phan Thị Minh Ý" placeholder="Ths BSNT Phan Thị Minh Ý" required />
             </div>
 
             <div>
               <label class="block text-slate-300 text-sm mb-1">Phòng</label>
-              <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="room" type="text" placeholder="101" required />
+              <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="room" type="text" value="PK SPK Thành Ý" placeholder="PK SPK Thành Ý" required />
             </div>
             <div>
               <label class="block text-slate-300 text-sm mb-1">Số bệnh nhân</label>
-              <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="capacity" type="number" min="1" value="20" required />
+              <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="capacity" type="number" min="1" value="10" required />
             </div>
             <div>
               <label class="block text-slate-300 text-sm mb-1">Trạng thái</label>
