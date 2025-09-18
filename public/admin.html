@@ -139,20 +139,25 @@
 
     function logout(){ localStorage.removeItem('ty_token'); location.reload(); }
     async function quickCloseDay(){
-      const dayStr = document.getElementById('closeDay').value;
-      if(dayStr===''){ alert('Chọn thứ cần đóng'); return }
-      const day = parseInt(dayStr,10);
-      const reason = document.getElementById('closeReason').value.trim() || 'Nghỉ';
-      // tránh trùng: nếu đã có slot CLOSED 00:00-23:59 thì bỏ qua
-      const exists = cachedData.some(s=>s.weekday===day && s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
-      if(exists){ alert('Ngày này đã được đánh dấu đóng cửa.'); return }
-      try{
-        await api.create(token, { weekday: day, start: '00:00', end: '23:59', doctor: '-', room: '-', note: reason, status: 'CLOSED', capacity: 0 });
-        document.getElementById('closeDay').value='';
-        document.getElementById('closeReason').value='';
-        await refresh();
-      }catch(err){ alert(err.message) }
-    }
+	  const dayStr = document.getElementById('closeDay').value;
+	  if(dayStr===''){ alert('Chọn thứ cần đóng'); return }
+	  const day = parseInt(dayStr,10);
+	  const reason = document.getElementById('closeReason').value.trim() || 'Nghỉ';
+
+	  try{
+		// Xoá toàn bộ slot của ngày trước khi tạo CLOSED all-day
+		const existsAll = cachedData.filter(s=>s.weekday===day);
+		for(const s of existsAll){ await api.remove(token, s.id); }
+
+		await api.create(token,{
+		  weekday: day, start: '00:00', end: '23:59',
+		  doctor: '-', room: '-', note: reason, status: 'CLOSED', capacity: 0
+		});
+		document.getElementById('closeDay').value='';
+		document.getElementById('closeReason').value='';
+		await refresh();
+	  }catch(err){ alert(err.message) }
+	}
 
     async function applyDefaults(){
       const sundayNote = 'CN có Test tiểu đường thai kì, các Bầu lưu ý phải nhịn ăn trước đó 10 tiếng.';
@@ -179,16 +184,28 @@
     }
 
     async function onToggleClosed(day, el){
-      try{
-        if(el.checked){
-          await api.create(token,{weekday:day,start:'00:00',end:'23:59',doctor:'-',room:'-',note:'Đóng cửa',status:'CLOSED',capacity:0});
-        }else{
-          const targets = cachedData.filter(s=>s.weekday===day && s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
-          for(const s of targets){ await api.remove(token, s.id); }
-        }
-        await refresh();
-      }catch(err){ alert(err.message); el.checked = !el.checked; }
-    }
+	  try{
+		if(el.checked){
+		  // 1) Xoá tất cả slot của ngày trước (cả OPEN/CLOSED lẻ tẻ) để tránh xung đột
+		  const targetsAll = cachedData.filter(s=>s.weekday===day);
+		  for(const s of targetsAll){ await api.remove(token, s.id); }
+
+		  // 2) Tạo duy nhất một slot CLOSED 00:00–23:59
+		  await api.create(token,{
+			weekday:day,start:'00:00',end:'23:59',
+			doctor:'-',room:'-',note:'Đóng cửa',status:'CLOSED',capacity:0
+		  });
+		}else{
+		  // Bỏ đóng: xoá slot CLOSED 00:00–23:59, các slot khác không tự phục hồi
+		  const targets = cachedData.filter(s=>s.weekday===day && s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
+		  for(const s of targets){ await api.remove(token, s.id); }
+		}
+		await refresh();
+	  }catch(err){
+		alert(err.message);
+		el.checked = !el.checked;
+	  }
+	}
   </script>
 </head>
 <body class="bg-slate-900">
