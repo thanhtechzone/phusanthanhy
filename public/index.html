@@ -39,8 +39,10 @@
         dayEl.className='glass rounded-xl shadow border border-white/40 overflow-hidden backdrop-saturate-150 animate-[fadeIn_0.4s_ease]';
         const offset = d===0 ? 6 : d-1;
         const dateStr = fmtDate(weekDates[offset]);
-        dayEl.innerHTML = `<div class=\"px-4 py-3 bg-white/60 border-b border-white/50 font-semibold flex items-center justify-between\"><span>${weekdayLabels[d]}</span><span class=\"text-sm text-slate-600\">${dateStr}</span></div>`;
         const slots = byDay[d];
+        const isOpen = slots.some(s=>s.status!=='CLOSED');
+        const dayBadge = isOpen ? '<span class=\'badge bg-cyan-50/80 text-cyan-700 border-cyan-200\'>Mở</span>' : '<span class=\'badge bg-rose-50/80 text-rose-700 border-rose-200\'>Đóng</span>';
+        dayEl.innerHTML = `<div class=\"px-4 py-3 bg-white/60 border-b border-white/50 font-semibold flex items-center justify-between\"><span>${weekdayLabels[d]} <span class=\"text-sm text-slate-600\">${dateStr}</span></span><span>${dayBadge}</span></div>`;
         if(slots.length===0){
           const empty = document.createElement('div'); empty.className='px-4 py-6 text-sm text-slate-600';
           empty.innerHTML = `Không có lịch`;
@@ -48,16 +50,13 @@
         } else {
           slots.forEach(s=>{
             const slot = document.createElement('div');
-            slot.className='px-4 py-3 border-b border-white/40 flex items-center gap-3 justify-between hover:bg-white/50 transition';
-            const badgeCls = s.status==='CLOSED' ? 'badge bg-rose-50/80 text-rose-700 border-rose-200' : 'badge bg-cyan-50/80 text-cyan-700 border-cyan-200';
+            slot.className='px-4 py-3 border-b border-white/40 hover:bg-white/50 transition';
             slot.innerHTML = `
-              <div class="min-w-0">
-                <div class="font-semibold">${s.start} - ${s.end}</div>
-                <div class="text-sm text-slate-700">${s.doctor}</div>
-                <div class="text-xs text-slate-600">${s.room} · Số khách: ${s.capacity}</div>
+              <div class=\"min-w-0\">
+                <div class=\"font-semibold\">${s.start} - ${s.end}</div>
                 ${s.note ? `<div class=\"text-xs text-slate-500 mt-1\">Ghi chú: ${s.note}</div>` : ''}
               </div>
-              <div class="${badgeCls}">${s.status==='CLOSED'?'Đóng':'Mở'}</div>`;
+              `;
             dayEl.appendChild(slot);
           })
         }
