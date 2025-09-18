@@ -9,7 +9,7 @@
     .glass{background:rgba(17,24,39,0.6);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);}
   </style>
   <script>
-    const weekdays = ['CN','T2','T3','T4','T5','T6','T7'];
+    const weekdays = ['T2','T3','T4','T5','T6','T7','CN'];
     const api = {
       login: async (email,password)=>{
         const r = await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
@@ -177,13 +177,13 @@
             <div>
               <label class="block text-slate-300 text-sm mb-1">Thứ</label>
               <select class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="weekday">
-                <option value="0">Chủ nhật</option>
                 <option value="1">Thứ 2</option>
                 <option value="2">Thứ 3</option>
                 <option value="3">Thứ 4</option>
                 <option value="4">Thứ 5</option>
                 <option value="5">Thứ 6</option>
                 <option value="6">Thứ 7</option>
+                <option value="0">Chủ nhật</option>
               </select>
             </div>
             <div>
@@ -227,13 +227,13 @@
             <div class="flex items-center gap-2">
               <select id="closeDay" class="px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white">
                 <option value="" selected>Đóng ngày (chọn thứ)</option>
-                <option value="0">Chủ nhật</option>
                 <option value="1">Thứ 2</option>
                 <option value="2">Thứ 3</option>
                 <option value="3">Thứ 4</option>
                 <option value="4">Thứ 5</option>
                 <option value="5">Thứ 6</option>
                 <option value="6">Thứ 7</option>
+                <option value="0">Chủ nhật</option>
               </select>
               <input id="closeReason" class="px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" placeholder="Lý do nghỉ (ví dụ: Nghỉ lễ)" />
               <button type="button" class="px-4 py-2 rounded-lg bg-rose-500 hover:bg-rose-400 text-white" onclick="quickCloseDay()">Đóng ngày</button>
