@@ -4,26 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Phòng Khám Sản Phụ Khoa Thành Ý - Lịch Khám</title>
+  <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    :root{--bg:#f6f8fa;--card:#ffffff;--text:#0f172a;--muted:#475569;--accent:#0ea5e9;--ok:#10b981;--bad:#ef4444}
-    *{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;background:var(--bg);color:var(--text)}
-    header{padding:16px 20px;background:var(--card);position:sticky;top:0;border-bottom:1px solid #e5e7eb}
-    h1{margin:0;font-size:20px}
-    .container{max-width:1100px;margin:20px auto;padding:0 16px}
-    .grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px}
-    @media (max-width:1000px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-    @media (max-width:640px){.grid{grid-template-columns:repeat(1,minmax(0,1fr))}}
-    .day{background:var(--card);border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
-    .day h3{margin:0;padding:12px 14px;border-bottom:1px solid #e5e7eb;background:#f9fafb;font-size:16px}
-    .slot{padding:12px 14px;border-bottom:1px dashed #e5e7eb;display:grid;grid-template-columns:1fr auto;gap:8px}
-    .slot:last-child{border-bottom:none}
-    .meta{font-size:13px;color:var(--muted)}
-    .title{font-weight:600}
-    .badge{padding:2px 8px;border-radius:999px;font-size:12px;align-self:start}
-    .available{background:#ecfeff;color:#0369a1;border:1px solid #bae6fd}
-    .closed{background:#fff1f2;color:#991b1b;border:1px solid #fecaca}
-    footer{color:var(--muted);text-align:center;padding:24px 12px;font-size:13px}
-    .note{margin-top:6px;font-size:12px;color:#64748b}
+    .glass{background:rgba(255,255,255,0.6);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);}
+    .badge{padding:2px 10px;border-radius:999px;font-size:12px;border:1px solid transparent}
   </style>
   <script>
     const weekdays = ['Chủ nhật','Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7'];
@@ -32,30 +16,28 @@
       const data = await res.json();
       const byDay = Array.from({length:7},()=>[]);
       data.forEach(s=>{byDay[s.weekday].push(s)});
-      const grid = document.getElementById('grid');
-      grid.innerHTML = '';
+      const grid = document.getElementById('grid'); grid.innerHTML = '';
       for(let d=0; d<7; d++){
-        const dayEl = document.createElement('div'); dayEl.className='day';
-        dayEl.innerHTML = `<h3>${weekdays[d]}</h3>`;
+        const dayEl = document.createElement('div');
+        dayEl.className='glass rounded-xl shadow border border-white/40 overflow-hidden backdrop-saturate-150 animate-[fadeIn_0.4s_ease]';
+        dayEl.innerHTML = `<div class="px-4 py-3 bg-white/60 border-b border-white/50 font-semibold">${weekdays[d]}</div>`;
         const slots = byDay[d];
         if(slots.length===0){
-          const empty = document.createElement('div');
-          empty.className='slot';
-          empty.innerHTML = `<div class="meta">Không có lịch</div>`;
+          const empty = document.createElement('div'); empty.className='px-4 py-6 text-sm text-slate-600';
+          empty.innerHTML = `Không có lịch`;
           dayEl.appendChild(empty);
         } else {
           slots.forEach(s=>{
             const slot = document.createElement('div');
-            slot.className='slot';
-            const badgeCls = s.status==='CLOSED' ? 'badge closed' : 'badge available';
+            slot.className='px-4 py-3 border-b border-white/40 flex items-center gap-3 justify-between hover:bg-white/50 transition';
+            const badgeCls = s.status==='CLOSED' ? 'badge bg-rose-50/80 text-rose-700 border-rose-200' : 'badge bg-cyan-50/80 text-cyan-700 border-cyan-200';
             slot.innerHTML = `
-              <div>
-                <div class="title">${s.start} - ${s.end} · BS. ${s.doctor} · Phòng ${s.room}</div>
-                <div class="meta">Số bệnh nhân: ${s.capacity}</div>
-                ${s.note ? `<div class="note">Ghi chú: ${s.note}</div>` : ''}
+              <div class="min-w-0">
+                <div class="font-semibold truncate">${s.start} - ${s.end} · BS. ${s.doctor} · Phòng ${s.room}</div>
+                <div class="text-xs text-slate-600">Số bệnh nhân: ${s.capacity}</div>
+                ${s.note ? `<div class=\"text-xs text-slate-500 mt-1\">Ghi chú: ${s.note}</div>` : ''}
               </div>
-              <div class="${badgeCls}">${s.status==='CLOSED'?'Đóng':'Mở'}</div>
-            `;
+              <div class="${badgeCls}">${s.status==='CLOSED'?'Đóng':'Mở'}</div>`;
             dayEl.appendChild(slot);
           })
         }
@@ -68,15 +50,19 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🩺</text></svg>">
  </head>
 <body>
-  <header>
-    <h1>PHÒNG KHÁM SẢN PHỤ KHOA THÀNH Ý — Lịch Khám</h1>
+  <header class="sticky top-0 z-10 bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+      <h1 class="text-lg font-semibold tracking-wide">PHÒNG KHÁM SẢN PHỤ KHOA THÀNH Ý — Lịch Khám</h1>
+      <a class="text-white/80 hover:text-white text-sm" href="/admin.html">Quản trị</a>
+    </div>
   </header>
-  <div class="container">
-    <div class="grid" id="grid"></div>
+  <div class="relative min-h-screen bg-gradient-to-br from-slate-100 to-sky-100">
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(56,189,248,0.25),transparent_40%),radial-gradient(circle_at_80%_0%,rgba(14,165,233,0.25),transparent_35%)]"></div>
+    <div class="relative max-w-6xl mx-auto px-4 py-6">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-4" id="grid"></div>
+    </div>
   </div>
-  <footer>
-    © <span id="year"></span> Phòng Khám Sản Phụ Khoa Thành Ý
-  </footer>
+  <footer class="text-slate-500 text-center py-6 text-sm">© <span id="year"></span> Phòng Khám Sản Phụ Khoa Thành Ý</footer>
   <script>document.getElementById('year').textContent=new Date().getFullYear()</script>
 </body>
 </html>

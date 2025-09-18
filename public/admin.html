@@ -4,26 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Admin - Phòng Khám Thành Ý</title>
+  <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    :root{--bg:#0b1020;--panel:#111827;--soft:#1f2937;--muted:#9ca3af;--text:#e5e7eb;--accent:#38bdf8;--danger:#f87171}
-    *{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;background:var(--bg);color:var(--text)}
-    header{padding:16px 20px;background:var(--panel);position:sticky;top:0;border-bottom:1px solid #111827}
-    h1{margin:0;font-size:20px}
-    .container{max-width:1100px;margin:20px auto;padding:0 16px}
-    .card{background:var(--panel);border:1px solid #111827;border-radius:10px;padding:16px;margin-bottom:16px}
-    label{display:block;margin:8px 0 4px;color:var(--muted);font-size:13px}
-    input,select,button,textarea{width:100%;padding:10px 12px;border-radius:8px;border:1px solid #374151;background:var(--soft);color:var(--text)}
-    textarea{min-height:64px}
-    button{cursor:pointer;background:#0ea5e9;border-color:#0284c7}
-    button.secondary{background:#374151;border-color:#4b5563}
-    table{width:100%;border-collapse:separate;border-spacing:0;border:1px solid #111827;border-radius:10px;overflow:hidden}
-    th,td{padding:10px;border-bottom:1px solid #111827;text-align:left;font-size:14px}
-    th{background:#0f172a;color:#94a3b8}
-    tr:nth-child(even){background:#0f172a}
-    .row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-    @media(max-width:900px){.row{grid-template-columns:repeat(2,1fr)}}
-    @media(max-width:600px){.row{grid-template-columns:1fr}}
-    .actions{display:flex;gap:8px}
+    .glass{background:rgba(17,24,39,0.6);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);}
   </style>
   <script>
     const weekdays = ['CN','T2','T3','T4','T5','T6','T7'];
@@ -60,18 +43,21 @@
       tbody.innerHTML = '';
       data.forEach(s=>{
         const tr = document.createElement('tr');
+        tr.className = 'divide-x divide-white/10';
         tr.innerHTML = `
-          <td>${s.id}</td>
-          <td>${weekdays[s.weekday]}</td>
-          <td>${s.start} - ${s.end}</td>
-          <td>BS. ${s.doctor}</td>
-          <td>${s.room}</td>
-          <td>${s.capacity}</td>
-          <td>${s.status==='CLOSED'?'Đóng':'Mở'}</td>
-          <td>${s.note||''}</td>
-          <td class="actions">
-            <button onclick="onEdit(${s.id})">Sửa</button>
-            <button class="secondary" onclick="onDelete(${s.id})">Xoá</button>
+          <td class="p-3">${s.id}</td>
+          <td class="p-3">${weekdays[s.weekday]}</td>
+          <td class="p-3">${s.start} - ${s.end}</td>
+          <td class="p-3">BS. ${s.doctor}</td>
+          <td class="p-3">${s.room}</td>
+          <td class="p-3">${s.capacity}</td>
+          <td class="p-3">${s.status==='CLOSED'?'Đóng':'Mở'}</td>
+          <td class="p-3">${s.note||''}</td>
+          <td class="p-3">
+            <div class="flex gap-2">
+              <button class="px-3 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white" onclick="onEdit(${s.id})">Sửa</button>
+              <button class="px-3 py-1 rounded bg-slate-700 hover:bg-slate-600 text-white" onclick="onDelete(${s.id})">Xoá</button>
+            </div>
           </td>`;
         tbody.appendChild(tr);
       })
@@ -143,38 +129,54 @@
     }
 
     function logout(){ localStorage.removeItem('ty_token'); location.reload(); }
+    async function quickCloseDay(){
+      const day = document.getElementById('closeDay').value;
+      if(day===''){ alert('Chọn thứ cần đóng'); return }
+      const reason = document.getElementById('closeReason').value.trim() || 'Nghỉ';
+      try{
+        await api.create(token, { weekday: parseInt(day,10), start: '00:00', end: '23:59', doctor: '-', room: '-', note: reason, status: 'CLOSED', capacity: 0 });
+        document.getElementById('closeDay').value='';
+        document.getElementById('closeReason').value='';
+        await refresh();
+      }catch(err){ alert(err.message) }
+    }
   </script>
 </head>
-<body>
-  <header>
-    <h1>Admin — Phòng Khám Thành Ý</h1>
+<body class="bg-slate-900">
+  <header class="sticky top-0 z-10 bg-gradient-to-r from-slate-900 to-slate-800 text-white shadow">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+      <h1 class="text-lg font-semibold">Admin — Phòng Khám Thành Ý</h1>
+      <a href="/" class="text-white/80 hover:text-white text-sm">Trang chủ</a>
+    </div>
   </header>
-  <div class="container">
-    <div id="auth" class="card" style="display:none">
+  <div class="relative min-h-screen bg-gradient-to-br from-slate-900 to-slate-800">
+    <div class="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_20%_20%,rgba(56,189,248,0.35),transparent_40%),radial-gradient(circle_at_80%_0%,rgba(99,102,241,0.35),transparent_35%)]"></div>
+    <div class="relative max-w-6xl mx-auto px-4 py-6">
+    <div id="auth" class="glass border border-white/10 rounded-xl p-4 mb-4" style="display:none">
       <form name="loginForm" onsubmit="onLogin(event)">
-        <div class="row">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
-            <label>Email</label>
-            <input name="email" type="email" placeholder="admin@thanhy-clinic.vn" required />
+            <label class="block text-slate-300 text-sm mb-1">Email</label>
+            <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="email" type="email" placeholder="admin@thanhy.vn" required />
           </div>
           <div>
-            <label>Mật khẩu</label>
-            <input name="password" type="password" placeholder="admin123" required />
+            <label class="block text-slate-300 text-sm mb-1">Mật khẩu</label>
+            <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="password" type="password" placeholder="admin123" required />
           </div>
-          <div style="align-self:end">
-            <button type="submit">Đăng nhập</button>
+          <div class="flex items-end">
+            <button class="w-full px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-white font-medium" type="submit">Đăng nhập</button>
           </div>
         </div>
       </form>
     </div>
 
     <div id="panel" style="display:none">
-      <div class="card">
+      <div class="glass border border-white/10 rounded-xl p-4 mb-4">
         <form name="slotForm" onsubmit="onSubmit(event)">
-          <div class="row">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div>
-              <label>Thứ</label>
-              <select name="weekday">
+              <label class="block text-slate-300 text-sm mb-1">Thứ</label>
+              <select class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="weekday">
                 <option value="0">Chủ nhật</option>
                 <option value="1">Thứ 2</option>
                 <option value="2">Thứ 3</option>
@@ -185,64 +187,80 @@
               </select>
             </div>
             <div>
-              <label>Giờ bắt đầu</label>
-              <input name="start" type="time" required />
+              <label class="block text-slate-300 text-sm mb-1">Giờ bắt đầu</label>
+              <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="start" type="time" required />
             </div>
             <div>
-              <label>Giờ kết thúc</label>
-              <input name="end" type="time" required />
+              <label class="block text-slate-300 text-sm mb-1">Giờ kết thúc</label>
+              <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="end" type="time" required />
             </div>
             <div>
-              <label>Bác sĩ</label>
-              <input name="doctor" type="text" placeholder="Nguyễn Văn A" required />
+              <label class="block text-slate-300 text-sm mb-1">Bác sĩ</label>
+              <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="doctor" type="text" placeholder="Nguyễn Văn A" required />
             </div>
 
             <div>
-              <label>Phòng</label>
-              <input name="room" type="text" placeholder="101" required />
+              <label class="block text-slate-300 text-sm mb-1">Phòng</label>
+              <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="room" type="text" placeholder="101" required />
             </div>
             <div>
-              <label>Số bệnh nhân</label>
-              <input name="capacity" type="number" min="1" value="20" required />
+              <label class="block text-slate-300 text-sm mb-1">Số bệnh nhân</label>
+              <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="capacity" type="number" min="1" value="20" required />
             </div>
             <div>
-              <label>Trạng thái</label>
-              <select name="status">
+              <label class="block text-slate-300 text-sm mb-1">Trạng thái</label>
+              <select class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="status">
                 <option value="AVAILABLE">Mở</option>
                 <option value="CLOSED">Đóng</option>
               </select>
             </div>
             <div>
-              <label>Ghi chú</label>
-              <textarea name="note" placeholder="Ghi chú thêm (nếu có)"></textarea>
+              <label class="block text-slate-300 text-sm mb-1">Ghi chú</label>
+              <textarea class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="note" placeholder="Ghi chú thêm (nếu có)"></textarea>
             </div>
           </div>
-          <div style="margin-top:12px;display:flex;gap:8px">
-            <button id="submitBtn" type="submit">Thêm mới</button>
-            <button type="button" class="secondary" onclick="document.forms.slotForm.reset();editingId=null;document.getElementById('submitBtn').textContent='Thêm mới'">Làm mới</button>
-            <button type="button" class="secondary" onclick="logout()">Đăng xuất</button>
+          <div class="mt-3 flex flex-wrap gap-2 items-center">
+            <button class="px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-white font-medium" id="submitBtn" type="submit">Thêm mới</button>
+            <button class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white" type="button" onclick="document.forms.slotForm.reset();editingId=null;document.getElementById('submitBtn').textContent='Thêm mới'">Làm mới</button>
+            <button class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white" type="button" onclick="logout()">Đăng xuất</button>
+            <div class="flex-1"></div>
+            <div class="flex items-center gap-2">
+              <select id="closeDay" class="px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white">
+                <option value="" selected>Đóng ngày (chọn thứ)</option>
+                <option value="0">Chủ nhật</option>
+                <option value="1">Thứ 2</option>
+                <option value="2">Thứ 3</option>
+                <option value="3">Thứ 4</option>
+                <option value="4">Thứ 5</option>
+                <option value="5">Thứ 6</option>
+                <option value="6">Thứ 7</option>
+              </select>
+              <input id="closeReason" class="px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" placeholder="Lý do nghỉ (ví dụ: Nghỉ lễ)" />
+              <button type="button" class="px-4 py-2 rounded-lg bg-rose-500 hover:bg-rose-400 text-white" onclick="quickCloseDay()">Đóng ngày</button>
+            </div>
           </div>
         </form>
       </div>
 
-      <div class="card">
-        <table>
-          <thead>
+      <div class="glass border border-white/10 rounded-xl overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-white/10 text-slate-200">
             <tr>
-              <th>ID</th>
-              <th>Thứ</th>
-              <th>Giờ</th>
-              <th>Bác sĩ</th>
-              <th>Phòng</th>
-              <th>Số BN</th>
-              <th>TT</th>
-              <th>Ghi chú</th>
-              <th>Hành động</th>
+              <th class="p-3 text-left">ID</th>
+              <th class="p-3 text-left">Thứ</th>
+              <th class="p-3 text-left">Giờ</th>
+              <th class="p-3 text-left">Bác sĩ</th>
+              <th class="p-3 text-left">Phòng</th>
+              <th class="p-3 text-left">Số BN</th>
+              <th class="p-3 text-left">TT</th>
+              <th class="p-3 text-left">Ghi chú</th>
+              <th class="p-3 text-left">Hành động</th>
             </tr>
           </thead>
-          <tbody id="tbody"></tbody>
+          <tbody id="tbody" class="divide-y divide-white/10 text-slate-100"></tbody>
         </table>
       </div>
+    </div>
     </div>
   </div>
 
