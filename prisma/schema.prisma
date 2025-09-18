@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(ADMIN)
+  createdAt    DateTime @default(now())
+}
+
+enum Role {
+  ADMIN
+}
+
+model Slot {
+  id        Int         @id @default(autoincrement())
+  weekday   Int
+  startMin  Int
+  endMin    Int
+  doctor    String
+  room      String
+  note      String?
+  status    SlotStatus  @default(AVAILABLE)
+  capacity  Int
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+enum SlotStatus {
+  AVAILABLE
+  CLOSED
+}
+
+

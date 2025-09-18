@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin - Phòng Khám Thành Ý</title>
+  <style>
+    :root{--bg:#0b1020;--panel:#111827;--soft:#1f2937;--muted:#9ca3af;--text:#e5e7eb;--accent:#38bdf8;--danger:#f87171}
+    *{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;background:var(--bg);color:var(--text)}
+    header{padding:16px 20px;background:var(--panel);position:sticky;top:0;border-bottom:1px solid #111827}
+    h1{margin:0;font-size:20px}
+    .container{max-width:1100px;margin:20px auto;padding:0 16px}
+    .card{background:var(--panel);border:1px solid #111827;border-radius:10px;padding:16px;margin-bottom:16px}
+    label{display:block;margin:8px 0 4px;color:var(--muted);font-size:13px}
+    input,select,button,textarea{width:100%;padding:10px 12px;border-radius:8px;border:1px solid #374151;background:var(--soft);color:var(--text)}
+    textarea{min-height:64px}
+    button{cursor:pointer;background:#0ea5e9;border-color:#0284c7}
+    button.secondary{background:#374151;border-color:#4b5563}
+    table{width:100%;border-collapse:separate;border-spacing:0;border:1px solid #111827;border-radius:10px;overflow:hidden}
+    th,td{padding:10px;border-bottom:1px solid #111827;text-align:left;font-size:14px}
+    th{background:#0f172a;color:#94a3b8}
+    tr:nth-child(even){background:#0f172a}
+    .row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    @media(max-width:900px){.row{grid-template-columns:repeat(2,1fr)}}
+    @media(max-width:600px){.row{grid-template-columns:1fr}}
+    .actions{display:flex;gap:8px}
+  </style>
+  <script>
+    const weekdays = ['CN','T2','T3','T4','T5','T6','T7'];
+    const api = {
+      login: async (email,password)=>{
+        const r = await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
+        if(!r.ok) throw new Error('Đăng nhập thất bại');
+        return r.json();
+      },
+      list: async ()=> (await fetch('/api/schedule')).json(),
+      create: async (token,payload)=>{
+        const r = await fetch('/api/admin/slots',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(payload)});
+        if(!r.ok) throw new Error('Tạo thất bại');
+        return r.json();
+      },
+      update: async (token,id,payload)=>{
+        const r = await fetch('/api/admin/slots/'+id,{method:'PUT',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(payload)});
+        if(!r.ok) throw new Error('Cập nhật thất bại');
+        return r.json();
+      },
+      remove: async (token,id)=>{
+        const r = await fetch('/api/admin/slots/'+id,{method:'DELETE',headers:{'Authorization':'Bearer '+token}});
+        if(!r.ok) throw new Error('Xoá thất bại');
+        return r.json();
+      }
+    }
+
+    let token = localStorage.getItem('ty_token')||'';
+    let editingId = null;
+
+    async function refresh(){
+      const data = await api.list();
+      const tbody = document.getElementById('tbody');
+      tbody.innerHTML = '';
+      data.forEach(s=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${s.id}</td>
+          <td>${weekdays[s.weekday]}</td>
+          <td>${s.start} - ${s.end}</td>
+          <td>BS. ${s.doctor}</td>
+          <td>${s.room}</td>
+          <td>${s.capacity}</td>
+          <td>${s.status==='CLOSED'?'Đóng':'Mở'}</td>
+          <td>${s.note||''}</td>
+          <td class="actions">
+            <button onclick="onEdit(${s.id})">Sửa</button>
+            <button class="secondary" onclick="onDelete(${s.id})">Xoá</button>
+          </td>`;
+        tbody.appendChild(tr);
+      })
+    }
+
+    function formToPayload(){
+      const f = document.forms.slotForm;
+      return {
+        weekday: parseInt(f.weekday.value,10),
+        start: f.start.value,
+        end: f.end.value,
+        doctor: f.doctor.value.trim(),
+        room: f.room.value.trim(),
+        note: f.note.value.trim(),
+        status: f.status.value,
+        capacity: parseInt(f.capacity.value,10)
+      };
+    }
+
+    async function onSubmit(e){
+      e.preventDefault();
+      try{
+        const payload = formToPayload();
+        if(editingId){
+          await api.update(token, editingId, payload);
+        }else{
+          await api.create(token, payload);
+        }
+        document.forms.slotForm.reset();
+        editingId = null;
+        document.getElementById('submitBtn').textContent = 'Thêm mới';
+        await refresh();
+      }catch(err){ alert(err.message) }
+    }
+
+    async function onLogin(e){
+      e.preventDefault();
+      try{
+        const f = document.forms.loginForm;
+        const { token: t } = await api.login(f.email.value.trim(), f.password.value);
+        token = t; localStorage.setItem('ty_token', t);
+        document.getElementById('auth').style.display='none';
+        document.getElementById('panel').style.display='block';
+        await refresh();
+      }catch(err){ alert(err.message) }
+    }
+
+    function onEdit(id){
+      const tr = [...document.querySelectorAll('#tbody tr')].find(r=>r.firstElementChild.textContent==id);
+      if(!tr) return;
+      const f = document.forms.slotForm;
+      const tds = tr.children;
+      editingId = id;
+      f.weekday.value = ['CN','T2','T3','T4','T5','T6','T7'].indexOf(tds[1].textContent);
+      const [start,end] = tds[2].textContent.split(' - ');
+      f.start.value=start; f.end.value=end;
+      f.doctor.value = tds[3].textContent.replace('BS. ','');
+      f.room.value = tds[4].textContent;
+      f.capacity.value = tds[5].textContent;
+      f.status.value = tds[6].textContent==='Đóng'?'CLOSED':'AVAILABLE';
+      f.note.value = tds[7].textContent;
+      document.getElementById('submitBtn').textContent = 'Cập nhật';
+      window.scrollTo({top:0,behavior:'smooth'});
+    }
+
+    async function onDelete(id){
+      if(!confirm('Xoá khung giờ #' + id + ' ?')) return;
+      try{ await api.remove(token, id); await refresh(); }catch(err){ alert(err.message) }
+    }
+
+    function logout(){ localStorage.removeItem('ty_token'); location.reload(); }
+  </script>
+</head>
+<body>
+  <header>
+    <h1>Admin — Phòng Khám Thành Ý</h1>
+  </header>
+  <div class="container">
+    <div id="auth" class="card" style="display:none">
+      <form name="loginForm" onsubmit="onLogin(event)">
+        <div class="row">
+          <div>
+            <label>Email</label>
+            <input name="email" type="email" placeholder="admin@thanhy-clinic.vn" required />
+          </div>
+          <div>
+            <label>Mật khẩu</label>
+            <input name="password" type="password" placeholder="admin123" required />
+          </div>
+          <div style="align-self:end">
+            <button type="submit">Đăng nhập</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div id="panel" style="display:none">
+      <div class="card">
+        <form name="slotForm" onsubmit="onSubmit(event)">
+          <div class="row">
+            <div>
+              <label>Thứ</label>
+              <select name="weekday">
+                <option value="0">Chủ nhật</option>
+                <option value="1">Thứ 2</option>
+                <option value="2">Thứ 3</option>
+                <option value="3">Thứ 4</option>
+                <option value="4">Thứ 5</option>
+                <option value="5">Thứ 6</option>
+                <option value="6">Thứ 7</option>
+              </select>
+            </div>
+            <div>
+              <label>Giờ bắt đầu</label>
+              <input name="start" type="time" required />
+            </div>
+            <div>
+              <label>Giờ kết thúc</label>
+              <input name="end" type="time" required />
+            </div>
+            <div>
+              <label>Bác sĩ</label>
+              <input name="doctor" type="text" placeholder="Nguyễn Văn A" required />
+            </div>
+
+            <div>
+              <label>Phòng</label>
+              <input name="room" type="text" placeholder="101" required />
+            </div>
+            <div>
+              <label>Số bệnh nhân</label>
+              <input name="capacity" type="number" min="1" value="20" required />
+            </div>
+            <div>
+              <label>Trạng thái</label>
+              <select name="status">
+                <option value="AVAILABLE">Mở</option>
+                <option value="CLOSED">Đóng</option>
+              </select>
+            </div>
+            <div>
+              <label>Ghi chú</label>
+              <textarea name="note" placeholder="Ghi chú thêm (nếu có)"></textarea>
+            </div>
+          </div>
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <button id="submitBtn" type="submit">Thêm mới</button>
+            <button type="button" class="secondary" onclick="document.forms.slotForm.reset();editingId=null;document.getElementById('submitBtn').textContent='Thêm mới'">Làm mới</button>
+            <button type="button" class="secondary" onclick="logout()">Đăng xuất</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Thứ</th>
+              <th>Giờ</th>
+              <th>Bác sĩ</th>
+              <th>Phòng</th>
+              <th>Số BN</th>
+              <th>TT</th>
+              <th>Ghi chú</th>
+              <th>Hành động</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Init auth view
+    if(token){ document.getElementById('panel').style.display='block'; refresh(); }
+    else { document.getElementById('auth').style.display='block'; }
+  </script>
+</body>
+</html>
+
+

@@ -1,0 +1,145 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
+const { PrismaClient } = require('@prisma/client');
+
+const app = express();
+const prisma = new PrismaClient();
+
+const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
+
+app.use(cors());
+app.use(bodyParser.json());
+app.use(express.static('public'));
+
+function authMiddleware(req, res, next) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) {
+    return res.status(401).json({ error: 'Missing token' });
+  }
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.user = payload;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+}
+
+function toMinutes(timeStr) {
+  // expects HH:MM
+  const [h, m] = timeStr.split(':').map((x) => parseInt(x, 10));
+  return h * 60 + m;
+}
+
+function fromMinutes(total) {
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, timestamp: new Date().toISOString() });
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+  const ok = await bcrypt.compare(password, user.passwordHash);
+  if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
+  const token = jwt.sign({ userId: user.id, role: user.role, email: user.email }, JWT_SECRET, {
+    expiresIn: '7d',
+  });
+  res.json({ token });
+});
+
+app.get('/api/schedule', async (req, res) => {
+  const slots = await prisma.slot.findMany({ orderBy: [{ weekday: 'asc' }, { startMin: 'asc' }] });
+  res.json(
+    slots.map((s) => ({
+      id: s.id,
+      weekday: s.weekday,
+      start: fromMinutes(s.startMin),
+      end: fromMinutes(s.endMin),
+      doctor: s.doctor,
+      room: s.room,
+      note: s.note || '',
+      status: s.status,
+      capacity: s.capacity,
+    }))
+  );
+});
+
+app.post('/api/admin/slots', authMiddleware, async (req, res) => {
+  const { weekday, start, end, doctor, room, note, status, capacity } = req.body;
+  if (
+    typeof weekday !== 'number' ||
+    weekday < 0 ||
+    weekday > 6 ||
+    !start ||
+    !end ||
+    !doctor ||
+    !room ||
+    typeof capacity !== 'number'
+  ) {
+    return res.status(400).json({ error: 'Invalid payload' });
+  }
+  const created = await prisma.slot.create({
+    data: {
+      weekday,
+      startMin: toMinutes(start),
+      endMin: toMinutes(end),
+      doctor,
+      room,
+      note: note || null,
+      status: status === 'CLOSED' ? 'CLOSED' : 'AVAILABLE',
+      capacity,
+    },
+  });
+  res.json(created);
+});
+
+app.put('/api/admin/slots/:id', authMiddleware, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const { weekday, start, end, doctor, room, note, status, capacity } = req.body;
+  const data = {};
+  if (typeof weekday === 'number') data.weekday = weekday;
+  if (start) data.startMin = toMinutes(start);
+  if (end) data.endMin = toMinutes(end);
+  if (doctor) data.doctor = doctor;
+  if (room) data.room = room;
+  if (note !== undefined) data.note = note || null;
+  if (status) data.status = status === 'CLOSED' ? 'CLOSED' : 'AVAILABLE';
+  if (typeof capacity === 'number') data.capacity = capacity;
+  try {
+    const updated = await prisma.slot.update({ where: { id }, data });
+    res.json(updated);
+  } catch (e) {
+    res.status(404).json({ error: 'Slot not found' });
+  }
+});
+
+app.delete('/api/admin/slots/:id', authMiddleware, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  try {
+    await prisma.slot.delete({ where: { id } });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(404).json({ error: 'Slot not found' });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+
+
