@@ -38,6 +38,29 @@ function adminOnly(req, res, next) {
   next();
 }
 
+function parseWeekStart(weekStr) {
+  // expect 'YYYY-MM-DD' (thứ Hai của tuần) → lưu UTC 00:00
+  // Ví dụ '2025-09-15' → new Date('2025-09-15T00:00:00Z')
+  if (!weekStr) return null;
+  const d = new Date(`${weekStr}T00:00:00Z`);
+  if (isNaN(d.getTime())) return null;
+  return d;
+}
+
+function mapSlotOut(s) {
+  return {
+    id: s.id,
+    weekday: s.weekday,
+    start: fromMinutes(s.startMin),
+    end: fromMinutes(s.endMin),
+    doctor: s.doctor,
+    room: s.room,
+    note: s.note || '',
+    status: s.status,
+    capacity: s.capacity,
+    weekStart: s.weekStart ? s.weekStart.toISOString().slice(0,10) : null, // YYYY-MM-DD
+  };
+}
 
 function toMinutes(timeStr) {
   // expects HH:MM
@@ -71,32 +94,33 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 app.get('/api/schedule', async (req, res) => {
-  const slots = await prisma.slot.findMany({ orderBy: [{ weekday: 'asc' }, { startMin: 'asc' }] });
-  res.json(
-    slots.map((s) => ({
-      id: s.id,
-      weekday: s.weekday,
-      start: fromMinutes(s.startMin),
-      end: fromMinutes(s.endMin),
-      doctor: s.doctor,
-      room: s.room,
-      note: s.note || '',
-      status: s.status,
-      capacity: s.capacity,
-    }))
-  );
+  const weekStr = req.query.week;
+  const order = [{ weekday: 'asc' }, { startMin: 'asc' }];
+
+  // Nếu có chọn tuần: ưu tiên trả về slot của tuần đó.
+  // Nếu tuần đó chưa có dữ liệu, fallback về slot "chung" (weekStart = null).
+  if (weekStr) {
+    const weekStart = parseWeekStart(weekStr);
+    if (!weekStart) return res.status(400).json({ error: 'Invalid week param' });
+
+    let slots = await prisma.slot.findMany({ where: { weekStart }, orderBy: order });
+    if (slots.length === 0) {
+      slots = await prisma.slot.findMany({ where: { weekStart: null }, orderBy: order });
+    }
+    return res.json(slots.map(mapSlotOut));
+  }
+
+  // Mặc định: giữ hành vi cũ (toàn bộ)
+  const slots = await prisma.slot.findMany({ orderBy: order });
+  res.json(slots.map(mapSlotOut));
 });
 
 app.post('/api/admin/slots', authMiddleware, async (req, res) => {
-  const { weekday, start, end, doctor, room, note, status, capacity } = req.body;
+  const { weekday, start, end, doctor, room, note, status, capacity, weekStart } = req.body;
   if (
     typeof weekday !== 'number' ||
-    weekday < 0 ||
-    weekday > 6 ||
-    !start ||
-    !end ||
-    !doctor ||
-    !room ||
+    weekday < 0 || weekday > 6 ||
+    !start || !end || !doctor || !room ||
     typeof capacity !== 'number'
   ) {
     return res.status(400).json({ error: 'Invalid payload' });
@@ -111,14 +135,16 @@ app.post('/api/admin/slots', authMiddleware, async (req, res) => {
       note: note || null,
       status: status === 'CLOSED' ? 'CLOSED' : 'AVAILABLE',
       capacity,
+      weekStart: weekStart ? parseWeekStart(weekStart) : null, // <-- NEW
     },
   });
   res.json(created);
 });
 
+
 app.put('/api/admin/slots/:id', authMiddleware, async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const { weekday, start, end, doctor, room, note, status, capacity } = req.body;
+  const { weekday, start, end, doctor, room, note, status, capacity, weekStart } = req.body;
   const data = {};
   if (typeof weekday === 'number') data.weekday = weekday;
   if (start) data.startMin = toMinutes(start);
@@ -128,6 +154,7 @@ app.put('/api/admin/slots/:id', authMiddleware, async (req, res) => {
   if (note !== undefined) data.note = note || null;
   if (status) data.status = status === 'CLOSED' ? 'CLOSED' : 'AVAILABLE';
   if (typeof capacity === 'number') data.capacity = capacity;
+  if (weekStart !== undefined) data.weekStart = weekStart ? parseWeekStart(weekStart) : null; // <-- NEW
   try {
     const updated = await prisma.slot.update({ where: { id }, data });
     res.json(updated);
@@ -135,6 +162,7 @@ app.put('/api/admin/slots/:id', authMiddleware, async (req, res) => {
     res.status(404).json({ error: 'Slot not found' });
   }
 });
+
 
 // DELETE ALL slots (optional reseed defaults with ?defaults=1)
 app.delete('/api/admin/slots/purge', authMiddleware, adminOnly, async (req, res) => {

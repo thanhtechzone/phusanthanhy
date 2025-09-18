@@ -29,9 +29,14 @@ model Slot {
   note      String?
   status    SlotStatus  @default(AVAILABLE)
   capacity  Int
+  weekStart DateTime?   // <-- NEW: thứ Hai (00:00 UTC) đại diện tuần của slot
+
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
+
+  @@index([weekStart, weekday, startMin])
 }
+
 
 enum SlotStatus {
   AVAILABLE

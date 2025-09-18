@@ -17,7 +17,7 @@
         if(!r.ok) throw new Error('Đăng nhập thất bại');
         return r.json();
       },
-      list: async ()=> (await fetch('/api/schedule')).json(),
+	  list: async (weekStart)=> (await fetch('/api/schedule' + (weekStart?`?week=${weekStart}`:''))).json(),
       create: async (token,payload)=>{
         const r = await fetch('/api/admin/slots',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(payload)});
         if(!r.ok) throw new Error('Tạo thất bại');
@@ -47,7 +47,7 @@
     }
 
     async function refresh(){
-      const data = await api.list();
+      const data = await api.list(selectedWeekStart);
       cachedData = data;
       const tbody = document.getElementById('tbody');
       tbody.innerHTML = '';
@@ -74,19 +74,60 @@
       }
     }
 
+	let selectedWeekStart = ''; // 'YYYY-MM-DD' thứ Hai tuần đang chọn (mặc định = tuần này)
+
+	function toISODate(d){ // YYYY-MM-DD (UTC)
+	  const d2 = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+	  return d2.toISOString().slice(0,10);
+	}
+	function getMonday(d){ // Monday of week (local)
+	  const t = new Date(d);
+	  const day = t.getDay(); // 0=Sun..6=Sat
+	  const diff = (day === 0 ? -6 : 1 - day); // move to Monday
+	  t.setDate(t.getDate() + diff);
+	  t.setHours(0,0,0,0);
+	  return t;
+	}
+	function addDays(d, n){ const x = new Date(d); x.setDate(x.getDate()+n); return x; }
+	function isoWeekNumber(d){ // ISO week (Mon first)
+	  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+	  const dayNum = (date.getUTCDay() + 6) % 7; // 0..6 Mon..Sun
+	  date.setUTCDate(date.getUTCDate() - dayNum + 3);
+	  const firstThursday = new Date(Date.UTC(date.getUTCFullYear(),0,4));
+	  const week = 1 + Math.round(((date - firstThursday) / 86400000 - 3) / 7);
+	  return week;
+	}
+	function labelForWeek(monday){ // monday is Date (local)
+	  const week = isoWeekNumber(monday);
+	  const start = monday;
+	  const end = addDays(monday, 6);
+	  const fmt = (d)=> String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0');
+	  return `W${String(week).padStart(2,'0')} ${fmt(start)} - ${fmt(end)}`;
+	}
+	function getWeekCandidates(){ // current + next 3
+	  const today = new Date();
+	  const m0 = getMonday(today);
+	  return [0,1,2,3].map(i=>{
+		const m = addDays(m0, i*7);
+		return { iso: toISODate(m), label: labelForWeek(m) };
+	  });
+	}
+
     function formToPayload(){
-      const f = document.forms.slotForm;
-      return {
-        weekday: parseInt(f.weekday.value,10),
-        start: f.start.value,
-        end: f.end.value,
-        doctor: DEFAULT_DOCTOR,
-        room: DEFAULT_ROOM,
-        note: f.note.value.trim(),
-        status: f.status.value,
-        capacity: DEFAULT_CAPACITY
-      };
-    }
+	  const f = document.forms.slotForm;
+	  return {
+		weekday: parseInt(f.weekday.value,10),
+		start: f.start.value,
+		end: f.end.value,
+		doctor: DEFAULT_DOCTOR,
+		room: DEFAULT_ROOM,
+		note: f.note.value.trim(),
+		status: f.status.value,
+		capacity: DEFAULT_CAPACITY,
+		weekStart: selectedWeekStart // <-- NEW
+	  };
+	}
+
 
     async function onSubmit(e){
 	  e.preventDefault();
@@ -115,16 +156,18 @@
 	}
 
     async function onLogin(e){
-      e.preventDefault();
-      try{
-        const f = document.forms.loginForm;
-        const { token: t } = await api.login(f.email.value.trim(), f.password.value);
-        token = t; localStorage.setItem('ty_token', t);
-        document.getElementById('auth').style.display='none';
-        document.getElementById('panel').style.display='block';
-        await refresh();
-      }catch(err){ alert(err.message) }
-    }
+	  e.preventDefault();
+	  try{
+		const f = document.forms.loginForm;
+		const { token: t } = await api.login(f.email.value.trim(), f.password.value);
+		token = t; localStorage.setItem('ty_token', t);
+		document.getElementById('auth').style.display='none';
+		document.getElementById('panel').style.display='block';
+		initWeekSelect();            // <-- THÊM DÒNG NÀY
+		await refresh();
+	  }catch(err){ alert(err.message) }
+	}
+
 
     function onEdit(id){
       const tr = [...document.querySelectorAll('#tbody tr')].find(r=>r.firstElementChild.textContent==id);
@@ -141,6 +184,24 @@
       document.getElementById('submitBtn').textContent = 'Cập nhật';
       window.scrollTo({top:0,behavior:'smooth'});
     }
+
+	function initWeekSelect(){
+	  const sel = document.getElementById('weekSelect');
+	  const items = getWeekCandidates();
+	  sel.innerHTML = '';
+	  items.forEach((w,i)=>{
+		const opt = document.createElement('option');
+		opt.value = w.iso;
+		opt.textContent = (i===0 ? '(Tuần này) ' : '') + w.label;
+		sel.appendChild(opt);
+	  });
+	  selectedWeekStart = items[0].iso;
+	  sel.value = selectedWeekStart;
+	  sel.addEventListener('change', async ()=>{
+		selectedWeekStart = sel.value;
+		await refresh();
+	  });
+	}
 
 	function toMin(t){ const [h,m]=t.split(':').map(Number); return h*60+m; }
 	function isOverlap(aStart,aEnd,bStart,bEnd){
@@ -170,8 +231,10 @@
 
 		await api.create(token,{
 		  weekday: day, start: '00:00', end: '23:59',
-		  doctor: '-', room: '-', note: reason, status: 'CLOSED', capacity: 0
+		  doctor: '-', room: '-', note: reason, status: 'CLOSED', capacity: 0,
+		  weekStart: selectedWeekStart    // <-- THÊM
 		});
+
 		document.getElementById('closeDay').value='';
 		document.getElementById('closeReason').value='';
 		await refresh();
@@ -187,11 +250,13 @@
 	  const plan = [];
 
 	  // CN (0): 07:00-11:00
-	  plan.push({weekday:0,start:'07:00',end:'11:00',doctor,room,note:sundayNote,status:'AVAILABLE',capacity:10});
+	  plan.push({weekday:0,start:'07:00',end:'11:00',doctor,room,note:sundayNote,status:'AVAILABLE',capacity:10,
+             weekStart: selectedWeekStart}); // <--
 
 	  // T2-T7 (1-6): 17:00-20:00
 	  for(let d=1; d<=6; d++){
-		plan.push({weekday:d,start:'17:00',end:'20:00',doctor,room,note:'',status:'AVAILABLE',capacity:10});
+		plan.push({weekday:d,start:'17:00',end:'20:00',doctor,room,note:'',status:'AVAILABLE',capacity:10,
+				   weekStart: selectedWeekStart}); // <--
 	  }
 
 	  const logs = [];
@@ -216,7 +281,7 @@
 		  if(closedAllDay.length){
 			for(const s of closedAllDay){ await api.remove(token, s.id); }
 			// refresh dữ liệu cục bộ để bước sau chính xác
-			const refreshed = await api.list();
+			const refreshed = await api.list(selectedWeekStart); // <--
 			cachedData = refreshed;
 			// tính lại conflicts sau khi xoá all-day
 			conflicts = findConflicts(p.weekday, p.start, p.end);
@@ -233,7 +298,7 @@
 		  await api.create(token, p);
 		  created++;
 		  // cập nhật cache để vòng lặp tiếp theo dùng
-		  const refreshed2 = await api.list();
+		  const refreshed2 = await api.list(selectedWeekStart); // <--
 		  cachedData = refreshed2;
 		}
 
@@ -278,10 +343,12 @@
 		  for(const s of targetsAll){ await api.remove(token, s.id); }
 
 		  // 2) Tạo duy nhất một slot CLOSED 00:00–23:59
-		  await api.create(token,{
-			weekday:day,start:'00:00',end:'23:59',
-			doctor:'-',room:'-',note:'Đóng cửa',status:'CLOSED',capacity:0
-		  });
+			await api.create(token,{
+			  weekday:day,start:'00:00',end:'23:59',
+			  doctor:'-',room:'-',note:'Đóng cửa',status:'CLOSED',capacity:0,
+			  weekStart: selectedWeekStart    // <-- THÊM
+			});
+
 		}else{
 		  // Bỏ đóng: xoá slot CLOSED 00:00–23:59, các slot khác không tự phục hồi
 		  const targets = cachedData.filter(s=>s.weekday===day && s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
@@ -384,9 +451,11 @@
 
       <div class="glass border border-white/10 rounded-xl overflow-hidden">
         <div class="flex flex-col gap-3 p-4">
-          <div class="flex items-center justify-between">
-			  <div class="text-slate-200 font-medium">Đóng cửa theo ngày</div>
+			<div class="flex items-center justify-between">
+			  <div class="text-slate-200 font-medium">Tuần làm việc</div>
 			  <div class="flex items-center gap-2">
+				<select id="weekSelect"
+						class="px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white"></select>
 				<button class="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white"
 						onclick="deleteAllSlots(false)">Xoá tất cả lịch</button>
 				<button class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white"
@@ -424,8 +493,9 @@
 
   <script>
     // Init auth view
-    if(token){ document.getElementById('panel').style.display='block'; refresh(); }
-    else { document.getElementById('auth').style.display='block'; }
+	if(token){ document.getElementById('panel').style.display='block'; initWeekSelect(); refresh(); }
+	else { document.getElementById('auth').style.display='block'; }
+
   </script>
 </body>
 </html>
