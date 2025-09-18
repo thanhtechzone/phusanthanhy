@@ -38,6 +38,9 @@
     let token = localStorage.getItem('ty_token')||'';
     let editingId = null;
     let cachedData = [];
+    const DEFAULT_DOCTOR = 'Ths BSNT Phan Thị Minh Ý';
+    const DEFAULT_ROOM = 'PK SPK Thành Ý';
+    const DEFAULT_CAPACITY = 10;
 
     function isClosedAllDay(day){
       return cachedData.some(s=>s.weekday===day && s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
@@ -80,11 +83,11 @@
         weekday: parseInt(f.weekday.value,10),
         start: f.start.value,
         end: f.end.value,
-        doctor: f.doctor.value.trim(),
-        room: f.room.value.trim(),
+        doctor: DEFAULT_DOCTOR,
+        room: DEFAULT_ROOM,
         note: f.note.value.trim(),
         status: f.status.value,
-        capacity: parseInt(f.capacity.value,10)
+        capacity: DEFAULT_CAPACITY
       };
     }
 
@@ -125,11 +128,9 @@
       f.weekday.value = ['CN','T2','T3','T4','T5','T6','T7'].indexOf(tds[1].textContent);
       const [start,end] = tds[2].textContent.split(' - ');
       f.start.value=start; f.end.value=end;
-      f.doctor.value = tds[3].textContent.replace('BS. ','');
-      f.room.value = tds[4].textContent;
-      f.capacity.value = tds[5].textContent;
-      f.status.value = tds[6].textContent==='Đóng'?'CLOSED':'AVAILABLE';
-      f.note.value = tds[7].textContent;
+      // doctor/room/capacity are defaulted; only map status and note
+      f.status.value = tds[3].textContent==='Đóng'?'CLOSED':'AVAILABLE';
+      f.note.value = tds[4].textContent;
       document.getElementById('submitBtn').textContent = 'Cập nhật';
       window.scrollTo({top:0,behavior:'smooth'});
     }
@@ -210,7 +211,7 @@
     <div id="panel" style="display:none">
       <div class="glass border border-white/10 rounded-xl p-4 mb-4">
         <form name="slotForm" onsubmit="onSubmit(event)">
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label class="block text-slate-300 text-sm mb-1">Thứ</label>
               <select class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="weekday">
@@ -230,19 +231,6 @@
             <div>
               <label class="block text-slate-300 text-sm mb-1">Giờ kết thúc</label>
               <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="end" type="time" required />
-            </div>
-            <div>
-              <label class="block text-slate-300 text-sm mb-1">Bác sĩ</label>
-              <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="doctor" type="text" value="Ths BSNT Phan Thị Minh Ý" placeholder="Ths BSNT Phan Thị Minh Ý" required />
-            </div>
-
-            <div>
-              <label class="block text-slate-300 text-sm mb-1">Phòng</label>
-              <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="room" type="text" value="PK SPK Thành Ý" placeholder="PK SPK Thành Ý" required />
-            </div>
-            <div>
-              <label class="block text-slate-300 text-sm mb-1">Số bệnh nhân</label>
-              <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="capacity" type="number" min="1" value="10" required />
             </div>
             <div>
               <label class="block text-slate-300 text-sm mb-1">Trạng thái</label>
