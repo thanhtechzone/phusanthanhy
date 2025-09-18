@@ -55,16 +55,13 @@
         const tr = document.createElement('tr');
         tr.className = 'divide-x divide-white/10';
         tr.innerHTML = `
-          <td class="p-3">${s.id}</td>
-          <td class="p-3">${weekdays[s.weekday]}</td>
-          <td class="p-3">${s.start} - ${s.end}</td>
-          <td class="p-3">${s.doctor}</td>
-          <td class="p-3">${s.room}</td>
-          <td class="p-3">${s.capacity}</td>
-          <td class="p-3">${s.status==='CLOSED'?'Đóng':'Mở'}</td>
-          <td class="p-3">${s.note||''}</td>
-          <td class="p-3">
-            <div class="flex gap-2">
+          <td class="px-3 py-2">${s.id}</td>
+          <td class="px-3 py-2">${weekdays[s.weekday]}</td>
+          <td class="px-3 py-2">${s.start} - ${s.end}</td>
+          <td class="px-3 py-2">${s.status==='CLOSED'?'Đóng':'Mở'}</td>
+          <td class="px-3 py-2">${s.note||''}</td>
+          <td class="px-3 py-2">
+            <div class="flex flex-wrap gap-2">
               <button class="px-3 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white" onclick="onEdit(${s.id})">Sửa</button>
               <button class="px-3 py-1 rounded bg-slate-700 hover:bg-slate-600 text-white" onclick="onDelete(${s.id})">Xoá</button>
             </div>
@@ -142,11 +139,15 @@
 
     function logout(){ localStorage.removeItem('ty_token'); location.reload(); }
     async function quickCloseDay(){
-      const day = document.getElementById('closeDay').value;
-      if(day===''){ alert('Chọn thứ cần đóng'); return }
+      const dayStr = document.getElementById('closeDay').value;
+      if(dayStr===''){ alert('Chọn thứ cần đóng'); return }
+      const day = parseInt(dayStr,10);
       const reason = document.getElementById('closeReason').value.trim() || 'Nghỉ';
+      // tránh trùng: nếu đã có slot CLOSED 00:00-23:59 thì bỏ qua
+      const exists = cachedData.some(s=>s.weekday===day && s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
+      if(exists){ alert('Ngày này đã được đánh dấu đóng cửa.'); return }
       try{
-        await api.create(token, { weekday: parseInt(day,10), start: '00:00', end: '23:59', doctor: '-', room: '-', note: reason, status: 'CLOSED', capacity: 0 });
+        await api.create(token, { weekday: day, start: '00:00', end: '23:59', doctor: '-', room: '-', note: reason, status: 'CLOSED', capacity: 0 });
         document.getElementById('closeDay').value='';
         document.getElementById('closeReason').value='';
         await refresh();
@@ -157,14 +158,24 @@
       const sundayNote = 'CN có Test tiểu đường thai kì, các Bầu lưu ý phải nhịn ăn trước đó 10 tiếng.';
       const doctor = 'Ths BSNT Phan Thị Minh Ý';
       const room = 'PK SPK Thành Ý';
-      const calls = [];
-      // CN (0): 07:00-11:00 với ghi chú đặc biệt
-      calls.push(api.create(token,{weekday:0,start:'07:00',end:'11:00',doctor,room,note:sundayNote,status:'AVAILABLE',capacity:10}));
-      // T2-T7 (1-6): 17:00-20:00
-      for(let d=1; d<=6; d++){
-        calls.push(api.create(token,{weekday:d,start:'17:00',end:'20:00',doctor,room,note:'',status:'AVAILABLE',capacity:10}));
+      const toCreate = [];
+      // CN (0): 07:00-11:00 nếu chưa tồn tại
+      if(!cachedData.some(s=>s.weekday===0 && s.start==='07:00' && s.end==='11:00' && s.status!=='CLOSED')){
+        toCreate.push({weekday:0,start:'07:00',end:'11:00',doctor,room,note:sundayNote,status:'AVAILABLE',capacity:10});
       }
-      try{ await Promise.all(calls); await refresh(); alert('Đã áp dụng lịch mặc định.'); }catch(err){ alert(err.message) }
+      // T2-T7 (1-6): 17:00-20:00 nếu chưa tồn tại
+      for(let d=1; d<=6; d++){
+        const dup = cachedData.some(s=>s.weekday===d && s.start==='17:00' && s.end==='20:00' && s.status!=='CLOSED');
+        if(!dup){
+          toCreate.push({weekday:d,start:'17:00',end:'20:00',doctor,room,note:'',status:'AVAILABLE',capacity:10});
+        }
+      }
+      if(toCreate.length===0){ alert('Lịch mặc định đã tồn tại đầy đủ.'); return }
+      try{
+        await Promise.all(toCreate.map(p=>api.create(token,p)));
+        await refresh();
+        alert('Đã áp dụng lịch mặc định (bỏ qua mục đã có).');
+      }catch(err){ alert(err.message) }
     }
 
     async function onToggleClosed(day, el){
@@ -287,15 +298,12 @@
         <table class="w-full text-sm">
           <thead class="bg-white/10 text-slate-200">
             <tr>
-              <th class="p-3 text-left">ID</th>
-              <th class="p-3 text-left">Thứ</th>
-              <th class="p-3 text-left">Giờ</th>
-              <th class="p-3 text-left">Bác sĩ</th>
-              <th class="p-3 text-left">Phòng</th>
-              <th class="p-3 text-left">Số BN</th>
-              <th class="p-3 text-left">TT</th>
-              <th class="p-3 text-left">Ghi chú</th>
-              <th class="p-3 text-left">Hành động</th>
+              <th class="px-3 py-2 text-left">ID</th>
+              <th class="px-3 py-2 text-left">Thứ</th>
+              <th class="px-3 py-2 text-left">Giờ</th>
+              <th class="px-3 py-2 text-left">TT</th>
+              <th class="px-3 py-2 text-left">Ghi chú</th>
+              <th class="px-3 py-2 text-left">Hành động</th>
             </tr>
           </thead>
           <tbody id="tbody" class="divide-y divide-white/10 text-slate-100"></tbody>
