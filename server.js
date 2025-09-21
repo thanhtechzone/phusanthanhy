@@ -242,16 +242,17 @@ async function applyDefaultsForNextWeekIfMissing() {
 }
 
 async function checkOverlap(weekday, startMin, endMin, weekStartDate, excludeId = null) {
-  const overlaps = await prisma.slot.findMany({
-    where: {
-      weekday,
-      weekStart: weekStartDate,
-      id: { not: excludeId },
-      OR: [
-        { startMin: { lt: endMin }, endMin: { gt: startMin } },
-      ],
-    },
-  });
+  const where = {
+    weekday,
+    weekStart: weekStartDate,
+    OR: [
+      { startMin: { lt: endMin }, endMin: { gt: startMin } },
+    ],
+  };
+  if (excludeId !== null && excludeId !== undefined) {  // <-- THÊM ĐIỀU KIỆN NÀY
+    where.id = { not: excludeId };
+  }
+  const overlaps = await prisma.slot.findMany({ where });
   return overlaps.length > 0;
 }
 
