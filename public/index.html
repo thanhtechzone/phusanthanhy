@@ -45,17 +45,18 @@
       return t;
     }
     async function loadSchedule(){
-	  const res = await fetch('/api/schedule?week=' + weekStart);  // <-- SỬA Ở ĐÂY
+	  const today = new Date();
+	  const monday = getMonday(today);
+	  const weekStart = toISODate(monday);  // TÍNH TRƯỚC
+
+	  const res = await fetch('/api/schedule?week=' + weekStart);  // DÙNG SAU KHI TÍNH
 	  const data = await res.json();
+
 	  const byDay = Array.from({length:7},()=>[]);
 	  data.forEach(s=>{byDay[s.weekday].push(s)});
 	  const grid = document.getElementById('grid'); grid.innerHTML = '';
 	  const weekOrder = [1,2,3,4,5,6,0];
 	  const weekDates = getWeekDatesMondayFirst();
-	  const today = new Date();
-      const monday = getMonday(today);
-      const weekStart = toISODate(monday);  // Ví dụ: '2025-09-15'
-	  
 
 	  for(const d of weekOrder){
 		const dayEl = document.createElement('div');
