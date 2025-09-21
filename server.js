@@ -117,6 +117,14 @@ app.get('/api/schedule', async (req, res) => {
 
 app.post('/api/admin/slots', authMiddleware, async (req, res) => {
   const { weekday, start, end, doctor, room, note, status, capacity, weekStart } = req.body;
+  const weekStartDate = weekStart ? parseWeekStart(weekStart) : null;
+  const startMin = toMinutes(start);
+  const endMin = toMinutes(end);
+  // NEW: Check overlap
+  // NEW: Check overlap (sau validation)
+  if (await checkOverlap(weekday, startMin, endMin, weekStartDate)) {
+    return res.status(400).json({ error: 'Slot overlaps with existing one' });
+  }  // <-- THÊM } ĐÓNG
   if (
     typeof weekday !== 'number' ||
     weekday < 0 || weekday > 6 ||
@@ -155,6 +163,16 @@ app.put('/api/admin/slots/:id', authMiddleware, async (req, res) => {
   if (status) data.status = status === 'CLOSED' ? 'CLOSED' : 'AVAILABLE';
   if (typeof capacity === 'number') data.capacity = capacity;
   if (weekStart !== undefined) data.weekStart = weekStart ? parseWeekStart(weekStart) : null; // <-- NEW
+  // NEW: Check overlap if time changed
+  if (start || end) {
+    const existing = await prisma.slot.findUnique({ where: { id } });
+    const checkWeek = data.weekStart || existing.weekStart;
+    const checkStart = data.startMin || existing.startMin;
+    const checkEnd = data.endMin || existing.endMin;
+    if (await checkOverlap(existing.weekday, checkStart, checkEnd, checkWeek, id)) {
+      return res.status(400).json({ error: 'Updated slot would overlap' });
+    }
+  }
   try {
     const updated = await prisma.slot.update({ where: { id }, data });
     res.json(updated);
@@ -170,9 +188,9 @@ app.delete('/api/admin/slots/purge', authMiddleware, adminOnly, async (req, res)
     const reseed = String(req.query.defaults || '').toLowerCase();
     const doReseed = reseed === '1' || reseed === 'true';
 
-    const result = await prisma.slot.deleteMany(); // { count }
+    const result = await prisma.slot.deleteMany();
     if (doReseed) {
-      await applyWeeklyDefaultsIfMissing();
+      await applyDefaultsForNextWeekIfMissing();  // <-- SỬA TÊN HÀM
     }
     res.json({ ok: true, deleted: result.count, reseeded: doReseed });
   } catch (e) {
@@ -199,31 +217,49 @@ app.listen(PORT, () => {
 // Weekly auto default scheduler: Sunday 23:59 (server time)
 const DEFAULT_DOCTOR = 'Ths BSNT Phan Thị Minh Ý';
 const DEFAULT_ROOM = 'PK SPK Thành Ý';
-async function applyWeeklyDefaultsIfMissing() {
-  // Check if next week has any slots; if none, create defaults
-  // We use weekday-only schedule, so just check presence of any slot entries
-  const any = await prisma.slot.count();
-  if (any === 0) {
-    const sundayNote = 'CN có Test tiểu đường thai kì, các Bầu lưu ý phải nhịn ăn trước đó 6 tiếng.';
+async function applyDefaultsForNextWeekIfMissing() {
+  const today = new Date();
+  const nextMonday = new Date(today);
+  nextMonday.setDate(today.getDate() + (today.getDay() === 0 ? 1 : 8 - today.getDay())); // Next Monday
+  nextMonday.setHours(0, 0, 0, 0);
+  const nextWeekStart = nextMonday; // Date object
+
+  const count = await prisma.slot.count({ where: { weekStart: nextWeekStart } });
+  if (count === 0) {
+    const sundayNote = 'CN có Test tiểu đường thai kì, các Bầu lưu ý phải nhịn ăn trước đó 8 tiếng.'; // Đồng bộ 8 tiếng
     const ops = [];
     ops.push(
-      prisma.slot.create({ data: { weekday: 0, startMin: 7*60, endMin: 11*60, doctor: DEFAULT_DOCTOR, room: DEFAULT_ROOM, note: sundayNote, status: 'AVAILABLE', capacity: 10 } })
+      prisma.slot.create({ data: { weekday: 0, startMin: 7*60, endMin: 11*60, doctor: DEFAULT_DOCTOR, room: DEFAULT_ROOM, note: sundayNote, status: 'AVAILABLE', capacity: 10, weekStart: nextWeekStart } })
     );
     for (let d = 1; d <= 6; d++) {
       ops.push(
-        prisma.slot.create({ data: { weekday: d, startMin: 17*60, endMin: 20*60, doctor: DEFAULT_DOCTOR, room: DEFAULT_ROOM, note: '', status: 'AVAILABLE', capacity: 10 } })
+        prisma.slot.create({ data: { weekday: d, startMin: 17*60, endMin: 20*60, doctor: DEFAULT_DOCTOR, room: DEFAULT_ROOM, note: '', status: 'AVAILABLE', capacity: 10, weekStart: nextWeekStart } })
       );
     }
     await Promise.all(ops);
-    console.log('Applied weekly default schedule');
+    console.log(`Applied defaults for week starting ${nextWeekStart.toISOString()}`);
   }
 }
 
+async function checkOverlap(weekday, startMin, endMin, weekStartDate, excludeId = null) {
+  const overlaps = await prisma.slot.findMany({
+    where: {
+      weekday,
+      weekStart: weekStartDate,
+      id: { not: excludeId },
+      OR: [
+        { startMin: { lt: endMin }, endMin: { gt: startMin } },
+      ],
+    },
+  });
+  return overlaps.length > 0;
+}
+
+// Sửa interval: Gọi hàm mới
 setInterval(async () => {
   const now = new Date();
-  const isSunday = now.getDay() === 0; // 0=Sunday
-  if (isSunday && now.getHours() === 23 && now.getMinutes() === 59) {
-    try { await applyWeeklyDefaultsIfMissing(); } catch (e) { console.error('Auto default error', e); }
+  if (now.getDay() === 0 && now.getHours() === 23 && now.getMinutes() === 59) { // Sunday 23:59
+    try { await applyDefaultsForNextWeekIfMissing(); } catch (e) { console.error('Auto default error', e); }
   }
 }, 60 * 1000);
 
