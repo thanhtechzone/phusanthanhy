@@ -6,8 +6,47 @@
   <title>Admin - Phòng Khám Thành Ý</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    .glass{background:rgba(17,24,39,0.6);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);}
+    /* --------- THEME TUNING --------- */
+    :root{
+      --glass-bg: rgba(17,24,39,0.55); /* slate-900 @ 55% */
+      --glass-bd: rgba(255,255,255,0.08);
+      --ring: rgba(56,189,248,0.45);
+    }
+    .glass{background:var(--glass-bg);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);}
+    .card{border:1px solid var(--glass-bd);border-radius:1rem;}
+    .btn{display:inline-flex;align-items:center;gap:.5rem;border-radius:.8rem;padding:.6rem 1rem;font-weight:600}
+    .btn:focus{outline:none;box-shadow:0 0 0 3px var(--ring)}
+    .btn-primary{background:#06b6d4;color:white}
+    .btn-primary:hover{background:#0891b2}
+    .btn-muted{background:#334155;color:#e5e7eb}
+    .btn-muted:hover{background:#3f495a}
+    .btn-danger{background:#ef4444;color:white}
+    .btn-danger:hover{background:#dc2626}
+    .btn-success{background:#10b981;color:white}
+    .btn-success:hover{background:#059669}
+    .field{background:rgba(15,23,42,.6);border:1px solid var(--glass-bd);color:white;border-radius:.8rem;padding:.6rem .8rem;width:100%}
+    .field:focus{outline:none;box-shadow:0 0 0 3px var(--ring)}
+
+    /* Table */
+    .table-wrap{position:relative;border-top:1px solid var(--glass-bd)}
+    table{width:100%;border-collapse:separate;border-spacing:0}
+    thead th{position:sticky;top:0;background:rgba(255,255,255,.06);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
+    thead th, tbody td{padding:.65rem .75rem;border-bottom:1px solid var(--glass-bd)}
+    tbody tr:hover{background:rgba(255,255,255,.04)}
+
+    /* Chips */
+    .chip{font-size:.75rem;line-height:1;display:inline-flex;align-items:center;padding:.35rem .55rem;border-radius:999px;border:1px solid transparent}
+    .chip-open{background:rgba(16,185,129,.15);color:#34d399;border-color:rgba(16,185,129,.35)}
+    .chip-closed{background:rgba(244,63,94,.12);color:#fb7185;border-color:rgba(244,63,94,.3)}
+
+    /* Grid helpers */
+    .panelgrid{display:grid;grid-template-columns:1fr;gap:1rem}
+    @media(min-width:768px){.panelgrid{grid-template-columns: 1.1fr .9fr}}
+
+    /* Simple toast */
+    .toast{position:fixed;right:1rem;bottom:1rem;z-index:50;display:none}
   </style>
+
   <script>
     // Map theo index DB: 0=CN,1=T2,...6=T7
     const weekdays = ['CN','T2','T3','T4','T5','T6','T7'];
@@ -51,6 +90,14 @@
       return cachedData.some(s=>s.weekday===day && s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
     }
 
+    function toast(msg,type='info'){
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.className = 'toast px-4 py-3 rounded-lg text-white shadow-lg ' + (type==='error'?'bg-rose-500':'bg-emerald-500');
+      el.style.display='block';
+      setTimeout(()=>{ el.style.display='none' }, 2200);
+    }
+
     async function refresh(){
       const data = await api.list(selectedWeekStart);
       cachedData = data;
@@ -58,17 +105,16 @@
       tbody.innerHTML = '';
       data.forEach(s=>{
         const tr = document.createElement('tr');
-        tr.className = 'divide-x divide-white/10';
         tr.innerHTML = `
-          <td class="px-3 py-2">${s.id}</td>
-          <td class="px-3 py-2">${weekdays[s.weekday]}</td>
-          <td class="px-3 py-2">${s.start} - ${s.end}</td>
-          <td class="px-3 py-2">${s.status==='CLOSED'?'Đóng':'Mở'}</td>
-          <td class="px-3 py-2">${s.note||''}</td>
-          <td class="px-3 py-2">
+          <td class="whitespace-nowrap text-slate-300">${s.id}</td>
+          <td class="whitespace-nowrap">${weekdays[s.weekday]}</td>
+          <td class="whitespace-nowrap">${s.start} - ${s.end}</td>
+          <td class="whitespace-nowrap">${s.status==='CLOSED' ? '<span class="chip chip-closed">Đóng</span>' : '<span class="chip chip-open">Mở</span>'}</td>
+          <td class="text-slate-300">${s.note||''}</td>
+          <td class="whitespace-nowrap">
             <div class="flex flex-wrap gap-2">
-              <button class="px-3 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white" onclick="onEdit(${s.id})">Sửa</button>
-              <button class="px-3 py-1 rounded bg-slate-700 hover:bg-slate-600 text-white" onclick="onDelete(${s.id})">Xoá</button>
+              <button class="btn btn-primary" onclick="onEdit(${s.id})" aria-label="Sửa">✏️<span class="hidden sm:inline">Sửa</span></button>
+              <button class="btn btn-muted" onclick="onDelete(${s.id})" aria-label="Xoá">🗑️<span class="hidden sm:inline">Xoá</span></button>
             </div>
           </td>`;
         tbody.appendChild(tr);
@@ -77,6 +123,7 @@
         const cb = document.getElementById('toggleClose_'+d);
         if(cb) cb.checked = isClosedAllDay(d);
       }
+      document.getElementById('count').textContent = data.length;
     }
 
 	let selectedWeekStart = ''; // 'YYYY-MM-DD' thứ Hai tuần đang chọn (mặc định = tuần này)
@@ -129,7 +176,7 @@
 		note: f.note.value.trim(),
 		status: f.status.value,
 		capacity: DEFAULT_CAPACITY,
-		weekStart: selectedWeekStart // <-- NEW
+		weekStart: selectedWeekStart // <-- giữ nguyên quy tắc tuần
 	  };
 	}
 
@@ -150,14 +197,16 @@
 		// 2) Tạo/cập nhật
 		if(editingId){
 		  await api.update(token, editingId, payload);
+		  toast('Đã cập nhật khung giờ');
 		}else{
 		  await api.create(token, payload);
+		  toast('Đã thêm khung giờ mới');
 		}
 		document.forms.slotForm.reset();
 		editingId = null;
 		document.getElementById('submitBtn').textContent = 'Thêm mới';
 		await refresh();
-	  }catch(err){ alert(err.message) }
+	  }catch(err){ toast(err.message,'error') }
 	}
 
     async function onLogin(e){
@@ -168,8 +217,9 @@
 		token = t; localStorage.setItem('ty_token', t);
 		document.getElementById('auth').style.display='none';
 		document.getElementById('panel').style.display='block';
-		initWeekSelect();            // <-- THÊM DÒNG NÀY
+		initWeekSelect();            // giữ nguyên
 		await refresh();
+		toast('Đăng nhập thành công');
 	  }catch(err){ alert(err.message) }
 	}
 
@@ -183,8 +233,7 @@
       f.weekday.value = ['CN','T2','T3','T4','T5','T6','T7'].indexOf(tds[1].textContent);
       const [start,end] = tds[2].textContent.split(' - ');
       f.start.value=start; f.end.value=end;
-      // doctor/room/capacity are defaulted; only map status and note
-      f.status.value = tds[3].textContent==='Đóng'?'CLOSED':'AVAILABLE';
+      f.status.value = tds[3].textContent.includes('Đóng')?'CLOSED':'AVAILABLE';
       f.note.value = tds[4].textContent;
       document.getElementById('submitBtn').textContent = 'Cập nhật';
       window.scrollTo({top:0,behavior:'smooth'});
@@ -219,7 +268,7 @@
 	}
     async function onDelete(id){
       if(!confirm('Xoá khung giờ #' + id + ' ?')) return;
-      try{ await api.remove(token, id); await refresh(); }catch(err){ alert(err.message) }
+      try{ await api.remove(token, id); await refresh(); toast('Đã xoá khung giờ'); }catch(err){ toast(err.message,'error') }
     }
 
     function logout(){ localStorage.removeItem('ty_token'); location.reload(); }
@@ -237,13 +286,14 @@
 		await api.create(token,{
 		  weekday: day, start: '00:00', end: '23:59',
 		  doctor: '-', room: '-', note: reason, status: 'CLOSED', capacity: 0,
-		  weekStart: selectedWeekStart    // <-- THÊM
+		  weekStart: selectedWeekStart
 		});
 
 		document.getElementById('closeDay').value='';
 		document.getElementById('closeReason').value='';
 		await refresh();
-	  }catch(err){ alert(err.message) }
+		toast('Đã đóng cả ngày');
+	  }catch(err){ toast(err.message,'error') }
 	}
 
     async function applyDefaults(){
@@ -251,17 +301,12 @@
 	  const doctor = 'Ths BSNT Phan Thị Minh Ý';
 	  const room = 'PK SPK Thành Ý';
 
-	  // Định nghĩa các slot mặc định sẽ cố gắng tạo
 	  const plan = [];
-
-	  // CN (0): 07:00-11:00
 	  plan.push({weekday:0,start:'07:00',end:'11:00',doctor,room,note:sundayNote,status:'AVAILABLE',capacity:10,
-             weekStart: selectedWeekStart}); // <--
-
-	  // T2-T7 (1-6): 17:00-20:00
+             weekStart: selectedWeekStart});
 	  for(let d=1; d<=6; d++){
 		plan.push({weekday:d,start:'17:00',end:'20:00',doctor,room,note:'',status:'AVAILABLE',capacity:10,
-				   weekStart: selectedWeekStart}); // <--
+				   weekStart: selectedWeekStart});
 	  }
 
 	  const logs = [];
@@ -269,7 +314,6 @@
 
 	  try{
 		for(const p of plan){
-		  // 1) Nếu đã có slot y hệt (cùng weekday, start, end, status) → bỏ qua (tránh duplicate)
 		  const exactDup = cachedData.some(
 			s=> s.weekday===p.weekday && s.start===p.start && s.end===p.end && s.status===p.status
 		  );
@@ -278,32 +322,24 @@
 			continue;
 		  }
 
-		  // 2) Tìm các slot giao thoa
 		  let conflicts = findConflicts(p.weekday, p.start, p.end);
-
-		  // 2a) Nếu có CLOSED all-day → xoá trước (không bỏ qua all-day, mà xử lý dứt điểm)
 		  const closedAllDay = conflicts.filter(s=>s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
 		  if(closedAllDay.length){
 			for(const s of closedAllDay){ await api.remove(token, s.id); }
-			// refresh dữ liệu cục bộ để bước sau chính xác
-			const refreshed = await api.list(selectedWeekStart); // <--
+			const refreshed = await api.list(selectedWeekStart);
 			cachedData = refreshed;
-			// tính lại conflicts sau khi xoá all-day
 			conflicts = findConflicts(p.weekday, p.start, p.end);
 		  }
 
-		  // 2b) Nếu vẫn còn xung đột với slot khác (OPEN/CLOSED lẻ tẻ) → bỏ qua để không tạo giao thoa
 		  if(conflicts.length){
 			const list = conflicts.map(s=>`#${s.id} ${s.start}-${s.end} ${s.status==='CLOSED'?'Đóng':'Mở'}`).join(', ');
 			logs.push(`Không thể tạo Thứ ${p.weekday} ${p.start}-${p.end} vì giao thoa với: ${list}`);
 			continue;
 		  }
 
-		  // 3) Không còn xung đột → tạo
 		  await api.create(token, p);
 		  created++;
-		  // cập nhật cache để vòng lặp tiếp theo dùng
-		  const refreshed2 = await api.list(selectedWeekStart); // <--
+		  const refreshed2 = await api.list(selectedWeekStart);
 		  cachedData = refreshed2;
 		}
 
@@ -316,8 +352,6 @@
 
 	async function deleteAllSlots(reseed){
 	  if(!token){ alert('Vui lòng đăng nhập'); return; }
-
-	  // Xác nhận 2 bước cho an toàn
 	  if(!confirm('Bạn chắc chắn muốn XOÁ TẤT CẢ lịch? Hành động này không thể hoàn tác.')) return;
 	  const confirmWord = prompt('Gõ "XOA" để xác nhận:');
 	  if((confirmWord || '').toUpperCase() !== 'XOA'){ alert('Huỷ thao tác.'); return; }
@@ -343,19 +377,14 @@
     async function onToggleClosed(day, el){
 	  try{
 		if(el.checked){
-		  // 1) Xoá tất cả slot của ngày trước (cả OPEN/CLOSED lẻ tẻ) để tránh xung đột
 		  const targetsAll = cachedData.filter(s=>s.weekday===day);
 		  for(const s of targetsAll){ await api.remove(token, s.id); }
-
-		  // 2) Tạo duy nhất một slot CLOSED 00:00–23:59
-			await api.create(token,{
-			  weekday:day,start:'00:00',end:'23:59',
-			  doctor:'-',room:'-',note:'Đóng cửa',status:'CLOSED',capacity:0,
-			  weekStart: selectedWeekStart    // <-- THÊM
-			});
-
+		  await api.create(token,{
+			weekday:day,start:'00:00',end:'23:59',
+			doctor:'-',room:'-',note:'Đóng cửa',status:'CLOSED',capacity:0,
+			weekStart: selectedWeekStart
+		  });
 		}else{
-		  // Bỏ đóng: xoá slot CLOSED 00:00–23:59, các slot khác không tự phục hồi
 		  const targets = cachedData.filter(s=>s.weekday===day && s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
 		  for(const s of targets){ await api.remove(token, s.id); }
 		}
@@ -367,142 +396,167 @@
 	}
   </script>
 </head>
-<body class="bg-slate-900">
-  <header class="sticky top-0 z-10 bg-gradient-to-r from-slate-900 to-slate-800 text-white shadow">
-    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-      <h1 class="text-lg font-semibold">Admin — Phòng Khám Thành Ý</h1>
-      <a href="/" class="text-white/80 hover:text-white text-sm">Trang chủ</a>
+<body class="bg-slate-950 text-slate-200 selection:bg-cyan-500/30">
+  <!-- HEADER -->
+  <header class="sticky top-0 z-20 bg-gradient-to-r from-slate-950/90 via-slate-900/90 to-slate-900/90 backdrop-blur border-b border-white/10">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="h-9 w-9 grid place-content-center rounded-xl bg-cyan-500/15 text-cyan-300">🩺</div>
+        <div>
+          <h1 class="text-base sm:text-lg font-semibold tracking-wide">Admin — Phòng Khám Thành Ý</h1>
+          <div class="text-xs text-slate-400">Quản lý lịch khám theo tuần</div>
+        </div>
+      </div>
+      <a href="/" class="text-slate-300 hover:text-white text-sm">Trang chủ</a>
     </div>
   </header>
-  <div class="relative min-h-screen bg-gradient-to-br from-slate-900 to-slate-800">
-    <div class="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_20%_20%,rgba(56,189,248,0.35),transparent_40%),radial-gradient(circle_at_80%_0%,rgba(99,102,241,0.35),transparent_35%)]"></div>
-    <div class="relative max-w-6xl mx-auto px-4 py-6">
-    <div id="auth" class="glass border border-white/10 rounded-xl p-4 mb-4" style="display:none">
-      <form name="loginForm" onsubmit="onLogin(event)">
+
+  <!-- BG DECOR -->
+  <div class="fixed inset-0 -z-10 opacity-50 bg-[radial-gradient(circle_at_15%_20%,rgba(56,189,248,0.35),transparent_40%),radial-gradient(circle_at_85%_10%,rgba(99,102,241,0.35),transparent_35%),radial-gradient(circle_at_50%_90%,rgba(20,184,166,0.25),transparent_38%)]"></div>
+
+  <main class="max-w-7xl mx-auto px-4 py-6 space-y-4">
+
+    <!-- AUTH CARD -->
+    <section id="auth" class="glass card p-4" style="display:none">
+      <form name="loginForm" onsubmit="onLogin(event)" class="space-y-3">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
             <label class="block text-slate-300 text-sm mb-1">Email</label>
-            <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="email" type="email" placeholder="admin@thanhy.vn" required />
+            <input class="field" name="email" type="email" placeholder="admin@thanhy.vn" required />
           </div>
           <div>
             <label class="block text-slate-300 text-sm mb-1">Mật khẩu</label>
-            <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="password" type="password" placeholder="admin123" required />
+            <input class="field" name="password" type="password" placeholder="••••••••" required />
           </div>
           <div class="flex items-end">
-            <button class="w-full px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-white font-medium" type="submit">Đăng nhập</button>
+            <button class="btn btn-primary w-full" type="submit">Đăng nhập</button>
           </div>
         </div>
       </form>
-    </div>
+    </section>
 
-    <div id="panel" style="display:none">
-      <div class="glass border border-white/10 rounded-xl p-4 mb-4">
-        <form name="slotForm" onsubmit="onSubmit(event)">
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label class="block text-slate-300 text-sm mb-1">Thứ</label>
-              <select class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="weekday">
-                <option value="1">Thứ 2</option>
-                <option value="2">Thứ 3</option>
-                <option value="3">Thứ 4</option>
-                <option value="4">Thứ 5</option>
-                <option value="5">Thứ 6</option>
-                <option value="6">Thứ 7</option>
-                <option value="0">Chủ nhật</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-slate-300 text-sm mb-1">Giờ bắt đầu</label>
-              <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="start" type="time" required />
-            </div>
-            <div>
-              <label class="block text-slate-300 text-sm mb-1">Giờ kết thúc</label>
-              <input class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="end" type="time" required />
-            </div>
-            <div>
-              <label class="block text-slate-300 text-sm mb-1">Trạng thái</label>
-              <select class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="status">
-                <option value="AVAILABLE">Mở</option>
-                <option value="CLOSED">Đóng</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-slate-300 text-sm mb-1">Ghi chú</label>
-              <textarea class="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" name="note" placeholder="Ghi chú thêm (nếu có)"></textarea>
-            </div>
+    <!-- PANEL -->
+    <section id="panel" style="display:none" class="space-y-4">
+
+      <!-- QUICK STATS & CONTROLS -->
+      <div class="panelgrid">
+        <div class="glass card p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="font-medium">Tạo / sửa khung giờ</h2>
+            <button class="btn btn-muted" type="button" onclick="logout()">Đăng xuất</button>
           </div>
-          <div class="mt-3 flex flex-wrap gap-2 items-center">
-            <button class="px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-white font-medium" id="submitBtn" type="submit">Thêm mới</button>
-            <button class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white" type="button" onclick="document.forms.slotForm.reset();editingId=null;document.getElementById('submitBtn').textContent='Thêm mới'">Làm mới</button>
-            <button class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white" type="button" onclick="logout()">Đăng xuất</button>
-            <div class="flex-1"></div>
+
+          <form name="slotForm" onsubmit="onSubmit(event)" class="space-y-3">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label class="block text-slate-300 text-sm mb-1">Thứ</label>
+                <select class="field" name="weekday">
+                  <option value="1">Thứ 2</option>
+                  <option value="2">Thứ 3</option>
+                  <option value="3">Thứ 4</option>
+                  <option value="4">Thứ 5</option>
+                  <option value="5">Thứ 6</option>
+                  <option value="6">Thứ 7</option>
+                  <option value="0">Chủ nhật</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-slate-300 text-sm mb-1">Giờ bắt đầu</label>
+                <input class="field" name="start" type="time" required />
+              </div>
+              <div>
+                <label class="block text-slate-300 text-sm mb-1">Giờ kết thúc</label>
+                <input class="field" name="end" type="time" required />
+              </div>
+              <div>
+                <label class="block text-slate-300 text-sm mb-1">Trạng thái</label>
+                <select class="field" name="status">
+                  <option value="AVAILABLE">Mở</option>
+                  <option value="CLOSED">Đóng</option>
+                </select>
+              </div>
+              <div class="md:col-span-2">
+                <label class="block text-slate-300 text-sm mb-1">Ghi chú</label>
+                <textarea class="field min-h-[42px]" name="note" placeholder="Ghi chú thêm (nếu có)"></textarea>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-2 items-center">
+              <button class="btn btn-primary" id="submitBtn" type="submit">Thêm mới</button>
+              <button class="btn btn-muted" type="button" onclick="document.forms.slotForm.reset();editingId=null;document.getElementById('submitBtn').textContent='Thêm mới'">Làm mới</button>
+              <div class="flex-1"></div>
+              <div class="flex items-center gap-2">
+                <select id="closeDay" class="field w-auto">
+                  <option value="" selected>Đóng ngày (chọn thứ)</option>
+                  <option value="1">Thứ 2</option>
+                  <option value="2">Thứ 3</option>
+                  <option value="3">Thứ 4</option>
+                  <option value="4">Thứ 5</option>
+                  <option value="5">Thứ 6</option>
+                  <option value="6">Thứ 7</option>
+                  <option value="0">Chủ nhật</option>
+                </select>
+                <input id="closeReason" class="field w-52" placeholder="Lý do nghỉ (ví dụ: Nghỉ lễ)" />
+                <button type="button" class="btn btn-danger" onclick="quickCloseDay()">Đóng ngày</button>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <div class="glass card p-4 space-y-3">
+          <div class="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <div class="text-sm text-slate-400">Tuần làm việc</div>
+              <div class="flex items-center gap-2 mt-1">
+                <select id="weekSelect" class="field w-auto"></select>
+                <span class="text-xs text-slate-400">Tổng slot: <span id="count">0</span></span>
+              </div>
+            </div>
             <div class="flex items-center gap-2">
-              <select id="closeDay" class="px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white">
-                <option value="" selected>Đóng ngày (chọn thứ)</option>
-                <option value="1">Thứ 2</option>
-                <option value="2">Thứ 3</option>
-                <option value="3">Thứ 4</option>
-                <option value="4">Thứ 5</option>
-                <option value="5">Thứ 6</option>
-                <option value="6">Thứ 7</option>
-                <option value="0">Chủ nhật</option>
-              </select>
-              <input id="closeReason" class="px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white" placeholder="Lý do nghỉ (ví dụ: Nghỉ lễ)" />
-              <button type="button" class="px-4 py-2 rounded-lg bg-rose-500 hover:bg-rose-400 text-white" onclick="quickCloseDay()">Đóng ngày</button>
+              <button class="btn btn-danger" onclick="deleteAllSlots(false)">Xoá tất cả lịch</button>
+              <button class="btn btn-success" onclick="applyDefaults()">Áp dụng lịch mặc định</button>
             </div>
           </div>
-        </form>
-      </div>
 
-      <div class="glass border border-white/10 rounded-xl overflow-hidden">
-        <div class="flex flex-col gap-3 p-4">
-			<div class="flex items-center justify-between">
-			  <div class="text-slate-200 font-medium">Tuần làm việc</div>
-			  <div class="flex items-center gap-2">
-				<select id="weekSelect"
-						class="px-3 py-2 rounded-lg bg-slate-800/70 border border-white/10 text-white"></select>
-				<button class="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white"
-						onclick="deleteAllSlots(false)">Xoá tất cả lịch</button>
-				<button class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white"
-						onclick="applyDefaults()">Áp dụng lịch mặc định</button>
-			  </div>
-			</div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-            <label class="flex items-center gap-2 text-slate-200"><input id="toggleClose_1" type="checkbox" onchange="onToggleClosed(1,this)" class="accent-rose-500"> T2</label>
-            <label class="flex items-center gap-2 text-slate-200"><input id="toggleClose_2" type="checkbox" onchange="onToggleClosed(2,this)" class="accent-rose-500"> T3</label>
-            <label class="flex items-center gap-2 text-slate-200"><input id="toggleClose_3" type="checkbox" onchange="onToggleClosed(3,this)" class="accent-rose-500"> T4</label>
-            <label class="flex items-center gap-2 text-slate-200"><input id="toggleClose_4" type="checkbox" onchange="onToggleClosed(4,this)" class="accent-rose-500"> T5</label>
-            <label class="flex items-center gap-2 text-slate-200"><input id="toggleClose_5" type="checkbox" onchange="onToggleClosed(5,this)" class="accent-rose-500"> T6</label>
-            <label class="flex items-center gap-2 text-slate-200"><input id="toggleClose_6" type="checkbox" onchange="onToggleClosed(6,this)" class="accent-rose-500"> T7</label>
-            <label class="flex items-center gap-2 text-slate-200"><input id="toggleClose_0" type="checkbox" onchange="onToggleClosed(0,this)" class="accent-rose-500"> CN</label>
+          <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 mt-2">
+            <label class="flex items-center gap-2"><input id="toggleClose_1" type="checkbox" onchange="onToggleClosed(1,this)" class="accent-rose-500"> T2</label>
+            <label class="flex items-center gap-2"><input id="toggleClose_2" type="checkbox" onchange="onToggleClosed(2,this)" class="accent-rose-500"> T3</label>
+            <label class="flex items-center gap-2"><input id="toggleClose_3" type="checkbox" onchange="onToggleClosed(3,this)" class="accent-rose-500"> T4</label>
+            <label class="flex items-center gap-2"><input id="toggleClose_4" type="checkbox" onchange="onToggleClosed(4,this)" class="accent-rose-500"> T5</label>
+            <label class="flex items-center gap-2"><input id="toggleClose_5" type="checkbox" onchange="onToggleClosed(5,this)" class="accent-rose-500"> T6</label>
+            <label class="flex items-center gap-2"><input id="toggleClose_6" type="checkbox" onchange="onToggleClosed(6,this)" class="accent-rose-500"> T7</label>
+            <label class="flex items-center gap-2"><input id="toggleClose_0" type="checkbox" onchange="onToggleClosed(0,this)" class="accent-rose-500"> CN</label>
           </div>
           <div class="text-xs text-slate-400">Bật công tắc để tạo slot Đóng cửa (00:00–23:59). Tắt để mở lại ngày đó.</div>
         </div>
-        <table class="w-full text-sm">
-          <thead class="bg-white/10 text-slate-200">
-            <tr>
-              <th class="px-3 py-2 text-left">ID</th>
-              <th class="px-3 py-2 text-left">Thứ</th>
-              <th class="px-3 py-2 text-left">Giờ</th>
-              <th class="px-3 py-2 text-left">TT</th>
-              <th class="px-3 py-2 text-left">Ghi chú</th>
-              <th class="px-3 py-2 text-left">Hành động</th>
-            </tr>
-          </thead>
-          <tbody id="tbody" class="divide-y divide-white/10 text-slate-100"></tbody>
-        </table>
       </div>
-    </div>
-    </div>
-  </div>
+
+      <!-- TABLE -->
+      <div class="glass card overflow-hidden">
+        <div class="table-wrap overflow-auto">
+          <table class="text-sm">
+            <thead class="text-slate-200">
+              <tr>
+                <th class="text-left">ID</th>
+                <th class="text-left">Thứ</th>
+                <th class="text-left">Giờ</th>
+                <th class="text-left">TT</th>
+                <th class="text-left">Ghi chú</th>
+                <th class="text-left">Hành động</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast"></div>
 
   <script>
-    // Init auth view
+    // Init auth view (GIỮ NGUYÊN HÀNH VI)
 	if(token){ document.getElementById('panel').style.display='block'; initWeekSelect(); refresh(); }
 	else { document.getElementById('auth').style.display='block'; }
-
   </script>
 </body>
 </html>
-
-
