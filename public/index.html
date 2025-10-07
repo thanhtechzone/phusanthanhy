@@ -1,187 +1,209 @@
 <!doctype html>
-<html lang="vi">
+<html lang="vi" class="h-full">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Phòng Khám Sản Phụ Khoa Thành Ý - Lịch Khám</title>
+  <meta name="description" content="Phòng Khám Sản Phụ Khoa Thành Ý - Lịch khám trong tuần" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🩺</text></svg>' />
+  <script>
+    // Tailwind CDN theme tuning
+    tailwind = undefined;
+  </script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    window.tailwind && (tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ["Inter", "system-ui", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"],
+          },
+          keyframes: {
+            fadeIn: { '0%':{opacity:0, transform:'translateY(4px) scale(.98)'}, '100%':{opacity:1, transform:'none'} },
+            pulseSoft: { '0%,100%':{opacity:.55}, '50%':{opacity:1} }
+          },
+          animation: {
+            fadeIn: 'fadeIn 320ms ease',
+            pulseSoft: 'pulseSoft 1.6s ease-in-out infinite'
+          }
+        }
+      }
+    })
+  </script>
   <style>
-    .glass{background:rgba(255,255,255,0.6);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);}
+    .glass{background:rgba(255,255,255,.6);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
     .badge{padding:2px 10px;border-radius:999px;font-size:12px;border:1px solid transparent}
+    @media (prefers-reduced-motion: reduce){ *{animation: none !important; transition: none !important} }
   </style>
   <script>
-	  const weekdayLabels = ['Chủ nhật','Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7'];
-	  let selectedWeekStart = null; // lưu tuần đang chọn
+    // ---------- Date helpers ----------
+    const weekdayLabels = ['Chủ nhật','Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7'];
+    let selectedWeekStart = null; // yyyy-mm-dd
 
-	  function getWeekDatesMondayFirst(baseDate=new Date()){
-		const jsDay = baseDate.getDay();
-		const indexFromMonday = (jsDay + 6) % 7;
-		const monday = new Date(baseDate);
-		monday.setDate(baseDate.getDate() - indexFromMonday);
-		monday.setHours(0,0,0,0);
-		return Array.from({length:7},(_,i)=>{
-		  const d = new Date(monday);
-		  d.setDate(monday.getDate()+i);
-		  return d;
-		});
-	  }
+    const toLocalStartOfDay = (d)=>{ const x=new Date(d); x.setHours(0,0,0,0); return x };
+    function getWeekDatesMondayFirst(baseDate=new Date()){
+      const jsDay = baseDate.getDay();
+      const indexFromMonday = (jsDay + 6) % 7; // 0 = Monday
+      const monday = new Date(baseDate);
+      monday.setDate(baseDate.getDate() - indexFromMonday);
+      monday.setHours(0,0,0,0);
+      return Array.from({length:7},(_,i)=>{ const d=new Date(monday); d.setDate(monday.getDate()+i); return toLocalStartOfDay(d);});
+    }
+    const pad2 = (n)=>String(n).padStart(2,'0');
+    const fmtDate = (d)=> `${pad2(d.getDate())}/${pad2(d.getMonth()+1)}`;
+    const toISODate = (d)=>{ const d2=new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); return d2.toISOString().slice(0,10) };
+    const getMonday = (d)=>{ const t=new Date(d); const day=t.getDay(); const diff=(day===0?-6:1-day); t.setDate(t.getDate()+diff); t.setHours(0,0,0,0); return t };
 
-	  function fmtDate(d){
-		const dd = String(d.getDate()).padStart(2,'0');
-		const mm = String(d.getMonth()+1).padStart(2,'0');
-		return `${dd}/${mm}`;
-	  }
+    function setWeekRange(ds){
+      const range = `${fmtDate(ds[0])} - ${fmtDate(ds[6])}`;
+      const el = document.getElementById('weekRange');
+      if(el) el.textContent = `— tuần ${range}`;
+    }
 
-	  function toISODate(d){ 
-		const d2 = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-		return d2.toISOString().slice(0,10);
-	  }
+    // ---------- Fetch helpers ----------
+    async function fetchJSON(url, opts){
+      const res = await fetch(url, opts);
+      if(!res.ok) throw new Error(`Lỗi ${res.status}: Không tải được dữ liệu`);
+      return res.json();
+    }
 
-	  function getMonday(d){ 
-		const t = new Date(d);
-		const day = t.getDay(); 
-		const diff = (day === 0 ? -6 : 1 - day); 
-		t.setDate(t.getDate() + diff);
-		t.setHours(0,0,0,0);
-		return t;
-	  }
+    // ---------- Render ----------
+    async function loadSchedule(weekStart){
+      selectedWeekStart = weekStart;
+      const grid = document.getElementById('grid');
+      grid.innerHTML = '';
 
-	  function setWeekRange(ds){
-		const range = `${fmtDate(ds[0])} - ${fmtDate(ds[6])}`;
-		const el = document.getElementById('weekRange');
-		if(el) el.textContent = `— tuần ${range}`;
-	  }
+      // skeletons
+      for(let i=0;i<7;i++){
+        const sk = document.createElement('div');
+        sk.className = 'rounded-xl border border-white/40 glass animate-pulseSoft h-36';
+        grid.appendChild(sk);
+      }
 
-	  async function loadSchedule(weekStart){
-		selectedWeekStart = weekStart;
-		const res = await fetch('/api/schedule?week=' + weekStart);
-		const data = await res.json();
-		const byDay = Array.from({length:7},()=>[]);
-		data.forEach(s=>{byDay[s.weekday].push(s)});
+      try{
+        const data = await fetchJSON('/api/schedule?week=' + weekStart);
+        const byDay = Array.from({length:7},()=>[]);
+        data.forEach(s=>{ byDay[s.weekday].push(s) });
 
-		const grid = document.getElementById('grid'); grid.innerHTML = '';
-		const weekDates = getWeekDatesMondayFirst(new Date(weekStart));
-		setWeekRange(weekDates);
+        grid.innerHTML = '';
+        const weekDates = getWeekDatesMondayFirst(new Date(weekStart));
+        setWeekRange(weekDates);
 
-		const weekOrder = [1,2,3,4,5,6,0];
-		for(const d of weekOrder){
-		  const dayEl = document.createElement('div');
-		  dayEl.className='glass rounded-xl shadow border border-white/40 overflow-hidden backdrop-saturate-150 animate-[fadeIn_0.4s_ease]';
-		  const offset = d===0 ? 6 : d-1;
-		  const dateStr = fmtDate(weekDates[offset]);
-		  const slots = byDay[d] || [];
+        const weekOrder = [1,2,3,4,5,6,0];
+        for(const d of weekOrder){
+          const dayEl = document.createElement('div');
+          dayEl.className='glass rounded-xl shadow border border-white/40 overflow-hidden backdrop-saturate-150 animate-fadeIn';
+          const offset = d===0 ? 6 : d-1;
+          const dateStr = fmtDate(weekDates[offset]);
+          const slots = byDay[d] || [];
 
-		  const allDayClosed = slots.some(s=>s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
-		  const hasOpenSlot = slots.some(s=>s.status!=='CLOSED');
-		  const isOpen = !allDayClosed && hasOpenSlot;
+          const allDayClosed = slots.some(s=>s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
+          const hasOpenSlot = slots.some(s=>s.status!=='CLOSED');
+          const isOpen = !allDayClosed && hasOpenSlot;
 
-		  const dayBadge = isOpen
-			? '<span class="badge bg-cyan-50/80 text-cyan-700 border-cyan-200">Mở</span>'
-			: '<span class="badge bg-rose-50/80 text-rose-700 border-rose-200">Đóng</span>';
+          const dayBadge = isOpen
+            ? '<span class="badge bg-cyan-50/80 text-cyan-700 border-cyan-200">Mở</span>'
+            : '<span class="badge bg-rose-50/80 text-rose-700 border-rose-200">Đóng</span>';
 
-		  dayEl.innerHTML = `<div class="px-4 py-3 bg-white/60 border-b border-white/50 font-semibold flex items-center justify-between">
-			<span>${weekdayLabels[d]} <span class="text-sm text-slate-600">${dateStr}</span></span>
-			<span>${dayBadge}</span>
-		  </div>`;
+          dayEl.innerHTML = `<div class="px-4 py-3 bg-white/60 border-b border-white/50 font-semibold flex items-center justify-between">
+            <span>${weekdayLabels[d]} <span class="text-sm text-slate-600">${dateStr}</span></span>
+            <span>${dayBadge}</span>
+          </div>`;
 
-		  if(slots.length===0){
-			const empty = document.createElement('div');
-			empty.className='px-4 py-6 text-sm text-slate-600';
-			empty.textContent = 'Không có lịch';
-			dayEl.appendChild(empty);
-		  } else if(allDayClosed){
-			const closeSlot = slots.find(s=>s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
-			const note = closeSlot?.note ? ` (${closeSlot.note})` : '';
-			const closed = document.createElement('div');
-			closed.className = 'px-4 py-6 text-sm text-rose-700';
-			closed.innerHTML = `<strong>Phòng khám nghỉ</strong>${note}`;
-			dayEl.appendChild(closed);
-		  } else {
-			slots
-			  .filter(s=>s.status!=='CLOSED')
-			  .sort((a,b)=>a.start.localeCompare(b.start))
-			  .forEach(s=>{
-				const slot = document.createElement('div');
-				slot.className='px-4 py-3 border-b border-white/40 hover:bg-white/50 transition';
-				slot.innerHTML = `
-				  <div class="min-w-0">
-					<div class="font-semibold">${s.start} - ${s.end}</div>
-					${s.note ? `<div class="text-xs text-slate-500 mt-1">Ghi chú: ${s.note}</div>` : ''}
-				  </div>`;
-				dayEl.appendChild(slot);
-			  });
-		  }
-		  grid.appendChild(dayEl);
-		}
-	  }
+          const body = document.createElement('div');
+          if(slots.length===0){
+            body.className='px-4 py-6 text-sm text-slate-600';
+            body.textContent = 'Không có lịch';
+          } else if(allDayClosed){
+            const closeSlot = slots.find(s=>s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
+            const note = closeSlot?.note ? ` (${closeSlot.note})` : '';
+            body.className = 'px-4 py-6 text-sm text-rose-700';
+            body.innerHTML = `<strong>Phòng khám nghỉ</strong>${note}`;
+          } else {
+            body.className='divide-y divide-white/40';
+            slots
+              .filter(s=>s.status!=='CLOSED')
+              .sort((a,b)=>a.start.localeCompare(b.start))
+              .forEach(s=>{
+                const slot = document.createElement('div');
+                slot.className='px-4 py-3 hover:bg-white/50 transition';
+                slot.innerHTML = `
+                  <div class="min-w-0">
+                    <div class="font-semibold">${s.start} - ${s.end}</div>
+                    ${s.note ? `<div class="text-xs text-slate-500 mt-1">Ghi chú: ${s.note}</div>` : ''}
+                  </div>`;
+                body.appendChild(slot);
+              });
+          }
+          dayEl.appendChild(body);
+          grid.appendChild(dayEl);
+        }
+      }catch(err){
+        grid.innerHTML = `<div class="col-span-full text-center text-rose-600 bg-rose-50 border border-rose-200 rounded-xl p-4">${err.message}</div>`;
+      }
+    }
 
-	  function initWeekSelect(){
-		const sel = document.getElementById('weekSelect');
-		sel.innerHTML = '';
-		const todayMonday = getMonday(new Date());
+    function initWeekSelect(){
+      const sel = document.getElementById('weekSelect');
+      sel.innerHTML = '';
+      const todayMonday = getMonday(new Date());
 
-		for(let offset=-2;offset<=2;offset++){
-		  const monday = new Date(todayMonday);
-		  monday.setDate(todayMonday.getDate()+offset*7);
-		  const weekStart = toISODate(monday);
-		  const ds = getWeekDatesMondayFirst(monday);
-		  const label = `${fmtDate(ds[0])} - ${fmtDate(ds[6])}`;
-		  const opt = document.createElement('option');
-		  opt.value = weekStart;
-		  opt.textContent = offset===0 ? `Tuần này (${label})` : `Tuần ${offset>0?'+':''}${offset} (${label})`;
-		  sel.appendChild(opt);
-		}
+      for(let offset=-2;offset<=2;offset++){
+        const monday = new Date(todayMonday);
+        monday.setDate(todayMonday.getDate()+offset*7);
+        const weekStart = toISODate(monday);
+        const ds = getWeekDatesMondayFirst(monday);
+        const label = `${fmtDate(ds[0])} - ${fmtDate(ds[6])}`;
+        const opt = document.createElement('option');
+        opt.value = weekStart;
+        opt.textContent = offset===0 ? `Tuần này (${label})` : `Tuần ${offset>0?'+':''}${offset} (${label})`;
+        sel.appendChild(opt);
+      }
 
-		sel.value = toISODate(todayMonday);
-		sel.addEventListener('change', ()=>loadSchedule(sel.value));
-	  }
+      sel.value = toISODate(todayMonday);
+      sel.addEventListener('change', ()=>loadSchedule(sel.value));
+    }
 
-	  window.addEventListener('DOMContentLoaded', ()=>{
-		initWeekSelect();
-		loadSchedule(toISODate(getMonday(new Date())));
-	  });
-	</script>
-
-  <meta name="description" content="Phòng Khám Sản Phụ Khoa Thành Ý - Lịch khám trong tuần" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🩺</text></svg>">
- </head>
-<body>
+    window.addEventListener('DOMContentLoaded', ()=>{
+      initWeekSelect();
+      loadSchedule(toISODate(getMonday(new Date())));
+      document.getElementById('year').textContent=new Date().getFullYear();
+    });
+  </script>
+</head>
+<body class="h-full">
   <header class="sticky top-0 z-10 bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow">
-    <div class="max-w-6xl mx-auto px-4 py-4">
-      <div class="flex items-center justify-between">
-        <div>
-		  <h1 class="text-lg font-semibold tracking-wide">PHÒNG KHÁM SẢN PHỤ KHOA THÀNH Ý — Lịch Khám 
-			<span id="weekRange" class="font-normal text-white/90"></span>
-		  </h1>
-		  <div class="text-white/90 text-sm mt-1">Thạc sĩ Bác sĩ nội trú Phan Thị Minh Ý</div>
-		</div>
-		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3 px-2">
-		  <label for="weekSelect" class="text-slate-400 text-sm">Chọn tuần:</label>
-		  <select id="weekSelect" 
-				  class="bg-slate-800 text-white text-sm rounded-xl px-3 py-2 border border-slate-600 w-full sm:w-auto">
-		  </select>
-		</div>
-
-        <a class="text-white/80 hover:text-white text-sm" href="/admin.html">Quản trị</a>
+    <div class="max-w-6xl mx-auto px-3 sm:px-4 py-3 sm:py-4">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div class="min-w-0">
+          <h1 class="text-base sm:text-lg font-semibold tracking-wide truncate">PHÒNG KHÁM SẢN PHỤ KHOA THÀNH Ý — Lịch Khám
+            <span id="weekRange" class="font-normal text-white/90"></span>
+          </h1>
+          <div class="text-white/90 text-xs sm:text-sm mt-1">Thạc sĩ Bác sĩ nội trú Phan Thị Minh Ý</div>
+        </div>
+        <div class="flex items-center gap-2">
+          <label for="weekSelect" class="text-white/80 text-xs sm:text-sm">Chọn tuần:</label>
+          <select id="weekSelect" class="bg-slate-900/30 text-white text-sm rounded-xl px-3 py-2 border border-white/30 focus:outline-none focus:ring-2 focus:ring-white/50 min-w-[12rem]" aria-label="Chọn tuần để xem lịch"></select>
+          <a class="text-white/90 hover:text-white text-sm underline-offset-2 hover:underline" href="/admin.html">Quản trị</a>
+        </div>
       </div>
     </div>
   </header>
-  <div class="relative min-h-screen bg-gradient-to-br from-slate-100 to-sky-100">
-    <div class="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(56,189,248,0.25),transparent_40%),radial-gradient(circle_at_80%_0%,rgba(14,165,233,0.25),transparent_35%)]"></div>
-    <div class="relative max-w-6xl mx-auto px-4 py-6">
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 gap-6" id="grid"></div>
 
-      <div class="mt-8 glass rounded-xl border border-white/40 p-4">
-        <div class="text-slate-700 font-semibold mb-2">Kết nối với chúng tôi</div>
+  <div class="relative min-h-screen bg-gradient-to-br from-slate-100 to-sky-100">
+    <div class="absolute inset-0 pointer-events-none select-none opacity-80 bg-[radial-gradient(circle_at_20%_20%,rgba(56,189,248,0.25),transparent_40%),radial-gradient(circle_at_80%_0%,rgba(14,165,233,0.25),transparent_35%)]"></div>
+    <main class="relative max-w-6xl mx-auto px-3 sm:px-4 py-6">
+      <div id="grid" class="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 gap-4 sm:gap-6"></div>
+
+      <section class="mt-8 glass rounded-xl border border-white/40 p-4">
+        <h2 class="text-slate-700 font-semibold mb-2">Kết nối với chúng tôi</h2>
         <div class="flex flex-wrap items-center gap-3 text-sm">
           <a class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 hover:bg-white transition border border-white/60" href="https://www.facebook.com/phusanthanhy" target="_blank" rel="noopener noreferrer">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="18" height="18" fill="#1877F2" aria-label="Facebook">
-              <path d="M13.651 35.471v-11.97H9.936V18h3.715v-2.37c0-6.127 2.772-8.964 8.784-8.964 1.138 0 3.103.223 3.91.446v4.983c-.425-.043-1.167-.065-2.081-.065-2.952 0-4.09 1.116-4.09 4.025V18h5.883l-1.008 5.5h-4.867v12.37a18.183 18.183 0 0 1-6.53-.399Z"></path>
-            </svg>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="18" height="18" fill="#1877F2" aria-label="Facebook"><path d="M13.651 35.471v-11.97H9.936V18h3.715v-2.37c0-6.127 2.772-8.964 8.784-8.964 1.138 0 3.103.223 3.91.446v4.983c-.425-.043-1.167-.065-2.081-.065-2.952 0-4.09 1.116-4.09 4.025V18h5.883l-1.008 5.5h-4.867v12.37a18.183 18.183 0 0 1-6.53-.399Z"></path></svg>
             <span>Facebook</span>
           </a>
           <a class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 hover:bg-white transition border border-white/60" href="https://www.tiktok.com/@phusanthanhy" target="_blank" rel="noopener noreferrer">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 25 42" width="18" height="18" aria-label="TikTok"><g clip-path="url(#a)"><path fill="#25F4EE" d="M9.875 16.842v-1.119A9 9 0 0 0 8.7 15.64c-4.797-.006-8.7 3.9-8.7 8.708a8.7 8.7 0 0 0 3.718 7.134A8.68 8.68 0 0 1 1.38 25.55c0-4.737 3.794-8.598 8.495-8.707"></path><path fill="#25F4EE" d="M10.087 29.526c2.14 0 3.89-1.707 3.966-3.83l.007-18.968h3.462a7 7 0 0 1-.109-1.202h-4.727l-.006 18.969a3.98 3.98 0 0 1-3.967 3.829 3.9 3.9 0 0 1-1.846-.46 3.95 3.95 0 0 0 3.22 1.662m13.905-16.36v-1.055a6.5 6.5 0 0 1-3.584-1.068 6.57 6.57 0 0 0 3.584 2.123"></path><path fill="#FE2C55" d="M20.408 11.043a6.54 6.54 0 0 1-1.616-4.315h-1.265a6.56 6.56 0 0 0 2.881 4.315M8.707 20.365a3.98 3.98 0 0 0-3.974 3.976c0 1.528.87 2.858 2.134 3.523a3.94 3.94 0 0 1-.754-2.32 3.98 3.98 0 0 1 3.973-3.977c.41 0 .805.07 1.176.185V16.92a9 9 0 0 0-1.176-.083c-.07 0-.134.006-.204.006v3.708a4 4 0 0 0-1.175-.185"></path><path fill="#FE2C55" d="M23.992 13.166v3.676a11.25 11.25 0 0 1-6.579-2.116v9.622c0 4.8-3.903 8.713-8.706 8.713a8.67 8.67 0 0 1-4.99-1.579 8.7 8.7 0 0 0 6.37 2.781c4.797 0 8.706-3.906 8.706-8.714v-9.621a11.25 11.25 0 0 0 6.579 2.116v-4.73a6.5 6.5 0 0 1-1.38-.148"></path><path fill="#fff" d="M17.413 24.347v-9.621a11.25 11.25 0 0 0 6.58 2.116v-3.676a6.57 6.57 0 0 1-3.584-2.123 6.6 6.6 0  0 1-2.887-4.315h-3.463l-.006 18.968a3.98 3.98 0 0 1-3.967 3.83 3.99 3.99 0 0 1-3.225-1.656 3.99 3.99 0 0 1-2.134-3.523A3.98 3.98 0 0 1 8.7 20.371c.409 0 .805.07 1.176.185v-3.708c-4.702.103-8.496 3.964-8.496 8.701 0 2.289.888 4.373 2.338 5.933a8.67 8.67 0 0 0 4.989 1.58c4.797 0 8.706-3.913 8.706-8.715"></path></g><defs><clipPath id="a"><path fill="#000" d="M0 0h25v42H0z"></path></clipPath></defs></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 25 42" width="18" height="18" aria-label="TikTok"><g clip-path="url(#a)"><path fill="#25F4EE" d="M9.875 16.842v-1.119A9 9 0 0 0 8.7 15.64c-4.797-.006-8.7 3.9-8.7 8.708a8.7 8.7 0 0 0 3.718 7.134A8.68 8.68 0 0 1 1.38 25.55c0-4.737 3.794-8.598 8.495-8.707"></path><path fill="#25F4EE" d="M10.087 29.526c2.14 0 3.89-1.707 3.966-3.83l.007-18.968h3.462a7 7 0 0 1-.109-1.202h-4.727l-.006 18.969a3.98 3.98 0 0 1-3.967 3.829 3.9 3.9 0 0 1-1.846-.46 3.95 3.95 0 0 0 3.22 1.662m13.905-16.36v-1.055a6.5 6.5 0 0 1-3.584-1.068 6.57 6.57 0 0 0 3.584 2.123"></path><path fill="#FE2C55" d="M20.408 11.043a6.54 6.54 0 0 1-1.616-4.315h-1.265a6.56 6.56 0 0 0 2.881 4.315M8.707 20.365a3.98 3.98 0 0 0-3.974 3.976c0 1.528.87 2.858 2.134 3.523a3.94 3.94 0 0 1-.754-2.32 3.98 3.98 0 0 1 3.973-3.977c.41 0 .805.07 1.176.185V16.92a9 9 0 0 0-1.176-.083c-.07 0-.134.006-.204.006v3.708a4 4 0 0 0-1.175-.185"></path><path fill="#FE2C55" d="M23.992 13.166v3.676a11.25 11.25 0 0 1-6.579-2.116v9.622c0 4.8-3.903 8.713-8.706 8.713a8.67 8.67 0 0 1-4.99-1.579 8.7 8.7 0 0 0 6.37 2.781c4.797 0 8.706-3.906 8.706-8.714v-9.621a11.25 11.25 0 0 0 6.579 2.116v-4.73a6.5 6.5 0 0 1-1.38-.148"></path><path fill="#fff" d="M17.413 24.347v-9.621a11.25 11.25 0 0 0 6.58 2.116v-3.676a6.57 6.57 0 0 1-3.584-2.123 6.6 6.6 0  0 1-2.887-4.315h-3.463l-.006 18.968a3.98 3.98 0 0 1-3.967 3.83 3.99 3.99 0 0 1-3.225-1.656 3.99 3.99 0 0 1-2.134-3.523A3.98 3.98 0  0 1 8.7 20.371c.409 0 .805.07 1.176.185v-3.708c-4.702.103-8.496 3.964-8.496 8.701 0 2.289.888 4.373 2.338 5.933a8.67 8.67 0 0 0 4.989 1.58c4.797 0 8.706-3.913 8.706-8.715"></path></g><defs><clipPath id="a"><path fill="#000" d="M0 0h25v42H0z"></path></clipPath></defs></svg>
             <span>TikTok</span>
           </a>
           <a class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 hover:bg-white transition border border-white/60" href="https://zalo.me/2083712834905080546" target="_blank" rel="noopener noreferrer">
@@ -189,12 +211,10 @@
             <span>Zalo</span>
           </a>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   </div>
+
   <footer class="text-slate-500 text-center py-6 text-sm">© <span id="year"></span> Phòng Khám Sản Phụ Khoa Thành Ý</footer>
-  <script>document.getElementById('year').textContent=new Date().getFullYear()</script>
 </body>
 </html>
-
-

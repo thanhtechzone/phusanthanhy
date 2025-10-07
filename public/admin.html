@@ -1,432 +1,90 @@
 <!doctype html>
-<html lang="vi">
+<html lang="vi" class="h-full">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Admin - Phòng Khám Thành Ý</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    window.tailwind && (tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ["Inter", "system-ui", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"],
+          },
+          colors: {
+            glass: { bg: 'rgba(17,24,39,0.55)' },
+          }
+        }
+      }
+    })
+  </script>
   <style>
-    /* --------- THEME TUNING --------- */
     :root{
-      --glass-bg: rgba(17,24,39,0.55); /* slate-900 @ 55% */
+      --glass-bg: rgba(17,24,39,0.55);
       --glass-bd: rgba(255,255,255,0.08);
       --ring: rgba(56,189,248,0.45);
     }
-    .glass{background:var(--glass-bg);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);}
-    .card{border:1px solid var(--glass-bd);border-radius:1rem;}
+    .glass{background:var(--glass-bg);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+    .card{border:1px solid var(--glass-bd);border-radius:1rem}
     .btn{display:inline-flex;align-items:center;gap:.5rem;border-radius:.8rem;padding:.6rem 1rem;font-weight:600}
     .btn:focus{outline:none;box-shadow:0 0 0 3px var(--ring)}
     .btn-primary{background:#06b6d4;color:white}
     .btn-primary:hover{background:#0891b2}
     .btn-muted{background:#334155;color:#e5e7eb}
     .btn-muted:hover{background:#3f495a}
-    .btn-danger{background:#ef4444;color:white}
+    .btn-danger{background:#ef4444;color:#fff}
     .btn-danger:hover{background:#dc2626}
-    .btn-success{background:#10b981;color:white}
+    .btn-success{background:#10b981;color:#fff}
     .btn-success:hover{background:#059669}
     .field{background:rgba(15,23,42,.6);border:1px solid var(--glass-bd);color:white;border-radius:.8rem;padding:.6rem .8rem;width:100%}
     .field:focus{outline:none;box-shadow:0 0 0 3px var(--ring)}
 
-    /* Table */
     .table-wrap{position:relative;border-top:1px solid var(--glass-bd)}
     table{width:100%;border-collapse:separate;border-spacing:0}
-    thead th{position:sticky;top:0;background:rgba(255,255,255,.06);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
+    thead th{position:sticky;top:0;background:rgba(255,255,255,.06);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
     thead th, tbody td{padding:.65rem .75rem;border-bottom:1px solid var(--glass-bd)}
     tbody tr:hover{background:rgba(255,255,255,.04)}
 
-    /* Chips */
     .chip{font-size:.75rem;line-height:1;display:inline-flex;align-items:center;padding:.35rem .55rem;border-radius:999px;border:1px solid transparent}
     .chip-open{background:rgba(16,185,129,.15);color:#34d399;border-color:rgba(16,185,129,.35)}
     .chip-closed{background:rgba(244,63,94,.12);color:#fb7185;border-color:rgba(244,63,94,.3)}
 
-    /* Grid helpers */
     .panelgrid{display:grid;grid-template-columns:1fr;gap:1rem}
     @media(min-width:768px){.panelgrid{grid-template-columns: 1.1fr .9fr}}
 
-    /* Simple toast */
     .toast{position:fixed;right:1rem;bottom:1rem;z-index:50;display:none}
+    @media (prefers-reduced-motion: reduce){ *{animation: none !important; transition: none !important} }
   </style>
-
-  <script>
-    // Map theo index DB: 0=CN,1=T2,...6=T7
-    const weekdays = ['CN','T2','T3','T4','T5','T6','T7'];
-    const api = {
-      login: async (email,password)=>{
-        const r = await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
-        if(!r.ok) throw new Error('Đăng nhập thất bại');
-        return r.json();
-      },
-	  list: async (weekStart) => {
-		  const r = await fetch('/api/schedule' + (weekStart?`?week=${weekStart}`:''));
-		  if (!r.ok) throw new Error('API /api/schedule lỗi: ' + r.status);
-		  return r.json();
-		},
-
-      create: async (token,payload)=>{
-        const r = await fetch('/api/admin/slots',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(payload)});
-        if(!r.ok) throw new Error('Tạo thất bại');
-        return r.json();
-      },
-      update: async (token,id,payload)=>{
-        const r = await fetch('/api/admin/slots/'+id,{method:'PUT',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(payload)});
-        if(!r.ok) throw new Error('Cập nhật thất bại');
-        return r.json();
-      },
-      remove: async (token,id)=>{
-        const r = await fetch('/api/admin/slots/'+id,{method:'DELETE',headers:{'Authorization':'Bearer '+token}});
-        if(!r.ok) throw new Error('Xoá thất bại');
-        return r.json();
-      }
-    }
-
-    let token = localStorage.getItem('ty_token')||'';
-    let editingId = null;
-    let cachedData = [];
-    const DEFAULT_DOCTOR = 'Ths BSNT Phan Thị Minh Ý';
-    const DEFAULT_ROOM = 'PK SPK Thành Ý';
-    const DEFAULT_CAPACITY = 10;
-
-    function isClosedAllDay(day){
-      return cachedData.some(s=>s.weekday===day && s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
-    }
-
-    function toast(msg,type='info'){
-      const el = document.getElementById('toast');
-      el.textContent = msg;
-      el.className = 'toast px-4 py-3 rounded-lg text-white shadow-lg ' + (type==='error'?'bg-rose-500':'bg-emerald-500');
-      el.style.display='block';
-      setTimeout(()=>{ el.style.display='none' }, 2200);
-    }
-
-    async function refresh(){
-      const data = await api.list(selectedWeekStart);
-      cachedData = data;
-      const tbody = document.getElementById('tbody');
-      tbody.innerHTML = '';
-      data.forEach(s=>{
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td class="whitespace-nowrap text-slate-300">${s.id}</td>
-          <td class="whitespace-nowrap">${weekdays[s.weekday]}</td>
-          <td class="whitespace-nowrap">${s.start} - ${s.end}</td>
-          <td class="whitespace-nowrap">${s.status==='CLOSED' ? '<span class="chip chip-closed">Đóng</span>' : '<span class="chip chip-open">Mở</span>'}</td>
-          <td class="text-slate-300">${s.note||''}</td>
-          <td class="whitespace-nowrap">
-            <div class="flex flex-wrap gap-2">
-              <button class="btn btn-primary" onclick="onEdit(${s.id})" aria-label="Sửa">✏️<span class="hidden sm:inline">Sửa</span></button>
-              <button class="btn btn-muted" onclick="onDelete(${s.id})" aria-label="Xoá">🗑️<span class="hidden sm:inline">Xoá</span></button>
-            </div>
-          </td>`;
-        tbody.appendChild(tr);
-      })
-      for(let d=0; d<7; d++){
-        const cb = document.getElementById('toggleClose_'+d);
-        if(cb) cb.checked = isClosedAllDay(d);
-      }
-      document.getElementById('count').textContent = data.length;
-    }
-
-	let selectedWeekStart = ''; // 'YYYY-MM-DD' thứ Hai tuần đang chọn (mặc định = tuần này)
-
-	function toISODate(d){ // YYYY-MM-DD (UTC)
-	  const d2 = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-	  return d2.toISOString().slice(0,10);
-	}
-	function getMonday(d){ // Monday of week (local)
-	  const t = new Date(d);
-	  const day = t.getDay(); // 0=Sun..6=Sat
-	  const diff = (day === 0 ? -6 : 1 - day); // move to Monday
-	  t.setDate(t.getDate() + diff);
-	  t.setHours(0,0,0,0);
-	  return t;
-	}
-	function addDays(d, n){ const x = new Date(d); x.setDate(x.getDate()+n); return x; }
-	function isoWeekNumber(d){ // ISO week (Mon first)
-	  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-	  const dayNum = (date.getUTCDay() + 6) % 7; // 0..6 Mon..Sun
-	  date.setUTCDate(date.getUTCDate() - dayNum + 3);
-	  const firstThursday = new Date(Date.UTC(date.getUTCFullYear(),0,4));
-	  const week = 1 + Math.round(((date - firstThursday) / 86400000 - 3) / 7);
-	  return week;
-	}
-	function labelForWeek(monday){ // monday is Date (local)
-	  const week = isoWeekNumber(monday);
-	  const start = monday;
-	  const end = addDays(monday, 6);
-	  const fmt = (d)=> String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0');
-	  return `W${String(week).padStart(2,'0')} ${fmt(start)} - ${fmt(end)}`;
-	}
-	function getWeekCandidates(){ // current + next 3
-	  const today = new Date();
-	  const m0 = getMonday(today);
-	  return [0,1,2,3].map(i=>{
-		const m = addDays(m0, i*7);
-		return { iso: toISODate(m), label: labelForWeek(m) };
-	  });
-	}
-
-    function formToPayload(){
-	  const f = document.forms.slotForm;
-	  return {
-		weekday: parseInt(f.weekday.value,10),
-		start: f.start.value,
-		end: f.end.value,
-		doctor: DEFAULT_DOCTOR,
-		room: DEFAULT_ROOM,
-		note: f.note.value.trim(),
-		status: f.status.value,
-		capacity: DEFAULT_CAPACITY,
-		weekStart: selectedWeekStart // <-- giữ nguyên quy tắc tuần
-	  };
-	}
-
-
-    async function onSubmit(e){
-	  e.preventDefault();
-	  try{
-		const payload = formToPayload();
-
-		// 1) Không cho phép giao thoa khi người dùng nhập tay
-		const conflicts = findConflicts(payload.weekday, payload.start, payload.end, editingId);
-		if(conflicts.length){
-		  const list = conflicts.map(s=>`#${s.id} ${s.start}-${s.end} ${s.status==='CLOSED'?'Đóng':'Mở'}`).join('\n');
-		  alert('Khung giờ bạn nhập bị giao thoa với:\n' + list + '\nVui lòng sửa hoặc xoá trước.');
-		  return;
-		}
-
-		// 2) Tạo/cập nhật
-		if(editingId){
-		  await api.update(token, editingId, payload);
-		  toast('Đã cập nhật khung giờ');
-		}else{
-		  await api.create(token, payload);
-		  toast('Đã thêm khung giờ mới');
-		}
-		document.forms.slotForm.reset();
-		editingId = null;
-		document.getElementById('submitBtn').textContent = 'Thêm mới';
-		await refresh();
-	  }catch(err){ toast(err.message,'error') }
-	}
-
-    async function onLogin(e){
-	  e.preventDefault();
-	  try{
-		const f = document.forms.loginForm;
-		const { token: t } = await api.login(f.email.value.trim(), f.password.value);
-		token = t; localStorage.setItem('ty_token', t);
-		document.getElementById('auth').style.display='none';
-		document.getElementById('panel').style.display='block';
-		initWeekSelect();            // giữ nguyên
-		await refresh();
-		toast('Đăng nhập thành công');
-	  }catch(err){ alert(err.message) }
-	}
-
-
-    function onEdit(id){
-      const tr = [...document.querySelectorAll('#tbody tr')].find(r=>r.firstElementChild.textContent==id);
-      if(!tr) return;
-      const f = document.forms.slotForm;
-      const tds = tr.children;
-      editingId = id;
-      f.weekday.value = ['CN','T2','T3','T4','T5','T6','T7'].indexOf(tds[1].textContent);
-      const [start,end] = tds[2].textContent.split(' - ');
-      f.start.value=start; f.end.value=end;
-      f.status.value = tds[3].textContent.includes('Đóng')?'CLOSED':'AVAILABLE';
-      f.note.value = tds[4].textContent;
-      document.getElementById('submitBtn').textContent = 'Cập nhật';
-      window.scrollTo({top:0,behavior:'smooth'});
-    }
-
-	function initWeekSelect(){
-	  const sel = document.getElementById('weekSelect');
-	  const items = getWeekCandidates();
-	  sel.innerHTML = '';
-	  items.forEach((w,i)=>{
-		const opt = document.createElement('option');
-		opt.value = w.iso;
-		opt.textContent = (i===0 ? '(Tuần này) ' : '') + w.label;
-		sel.appendChild(opt);
-	  });
-	  selectedWeekStart = items[0].iso;
-	  sel.value = selectedWeekStart;
-	  sel.addEventListener('change', async ()=>{
-		selectedWeekStart = sel.value;
-		await refresh();
-	  });
-	}
-
-	function toMin(t){ const [h,m]=t.split(':').map(Number); return h*60+m; }
-	function isOverlap(aStart,aEnd,bStart,bEnd){
-	  return Math.min(toMin(aEnd), toMin(bEnd)) > Math.max(toMin(aStart), toMin(bStart));
-	}
-	function findConflicts(weekday, start, end, exceptId=null){
-	  return cachedData.filter(
-		s => s.weekday===weekday && s.id!==exceptId && isOverlap(s.start, s.end, start, end)
-	  );
-	}
-    async function onDelete(id){
-      if(!confirm('Xoá khung giờ #' + id + ' ?')) return;
-      try{ await api.remove(token, id); await refresh(); toast('Đã xoá khung giờ'); }catch(err){ toast(err.message,'error') }
-    }
-
-    function logout(){ localStorage.removeItem('ty_token'); location.reload(); }
-    async function quickCloseDay(){
-	  const dayStr = document.getElementById('closeDay').value;
-	  if(dayStr===''){ alert('Chọn thứ cần đóng'); return }
-	  const day = parseInt(dayStr,10);
-	  const reason = document.getElementById('closeReason').value.trim() || 'Nghỉ';
-
-	  try{
-		// Xoá toàn bộ slot của ngày trước khi tạo CLOSED all-day
-		const existsAll = cachedData.filter(s=>s.weekday===day);
-		for(const s of existsAll){ await api.remove(token, s.id); }
-
-		await api.create(token,{
-		  weekday: day, start: '00:00', end: '23:59',
-		  doctor: '-', room: '-', note: reason, status: 'CLOSED', capacity: 0,
-		  weekStart: selectedWeekStart
-		});
-
-		document.getElementById('closeDay').value='';
-		document.getElementById('closeReason').value='';
-		await refresh();
-		toast('Đã đóng cả ngày');
-	  }catch(err){ toast(err.message,'error') }
-	}
-
-    async function applyDefaults(){
-	  const sundayNote = 'CN có Test tiểu đường thai kì, các Bầu lưu ý phải nhịn ăn trước đó 8 tiếng.';
-	  const doctor = 'Ths BSNT Phan Thị Minh Ý';
-	  const room = 'PK SPK Thành Ý';
-
-	  const plan = [];
-	  plan.push({weekday:0,start:'07:00',end:'11:00',doctor,room,note:sundayNote,status:'AVAILABLE',capacity:10,
-             weekStart: selectedWeekStart});
-	  for(let d=1; d<=6; d++){
-		plan.push({weekday:d,start:'17:00',end:'20:00',doctor,room,note:'',status:'AVAILABLE',capacity:10,
-				   weekStart: selectedWeekStart});
-	  }
-
-	  const logs = [];
-	  let created = 0;
-
-	  try{
-		for(const p of plan){
-		  const exactDup = cachedData.some(
-			s=> s.weekday===p.weekday && s.start===p.start && s.end===p.end && s.status===p.status
-		  );
-		  if(exactDup){
-			logs.push(`Bỏ qua do đã tồn tại: Thứ ${p.weekday} ${p.start}-${p.end}`);
-			continue;
-		  }
-
-		  let conflicts = findConflicts(p.weekday, p.start, p.end);
-		  const closedAllDay = conflicts.filter(s=>s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
-		  if(closedAllDay.length){
-			for(const s of closedAllDay){ await api.remove(token, s.id); }
-			const refreshed = await api.list(selectedWeekStart);
-			cachedData = refreshed;
-			conflicts = findConflicts(p.weekday, p.start, p.end);
-		  }
-
-		  if(conflicts.length){
-			const list = conflicts.map(s=>`#${s.id} ${s.start}-${s.end} ${s.status==='CLOSED'?'Đóng':'Mở'}`).join(', ');
-			logs.push(`Không thể tạo Thứ ${p.weekday} ${p.start}-${p.end} vì giao thoa với: ${list}`);
-			continue;
-		  }
-
-		  await api.create(token, p);
-		  created++;
-		  const refreshed2 = await api.list(selectedWeekStart);
-		  cachedData = refreshed2;
-		}
-
-		await refresh();
-		alert(`Áp dụng lịch mặc định: tạo mới ${created} slot.\n` + (logs.length ? ('Ghi chú:\n- ' + logs.join('\n- ')) : ''));
-	  }catch(err){
-		alert(err.message);
-	  }
-	}
-
-	async function deleteAllSlots(reseed){
-	  if(!token){ alert('Vui lòng đăng nhập'); return; }
-	  if(!confirm('Bạn chắc chắn muốn XOÁ TẤT CẢ lịch? Hành động này không thể hoàn tác.')) return;
-	  const confirmWord = prompt('Gõ "XOA" để xác nhận:');
-	  if((confirmWord || '').toUpperCase() !== 'XOA'){ alert('Huỷ thao tác.'); return; }
-
-	  try{
-		const url = '/api/admin/slots/purge' + (reseed ? '?defaults=1' : '');
-		const r = await fetch(url, {
-		  method: 'DELETE',
-		  headers: { 'Authorization': 'Bearer ' + token }
-		});
-		if(!r.ok){
-		  const t = await r.json().catch(()=>({}));
-		  throw new Error(t.error || 'Xoá tất cả thất bại');
-		}
-		const res = await r.json();
-		alert(`Đã xoá ${res.deleted || 0} slot.` + (res.reseeded ? '\nĐã tạo lại lịch mặc định.' : ''));
-		await refresh();
-	  }catch(err){
-		alert(err.message);
-	  }
-	}
-
-    async function onToggleClosed(day, el){
-	  try{
-		if(el.checked){
-		  const targetsAll = cachedData.filter(s=>s.weekday===day);
-		  for(const s of targetsAll){ await api.remove(token, s.id); }
-		  await api.create(token,{
-			weekday:day,start:'00:00',end:'23:59',
-			doctor:'-',room:'-',note:'Đóng cửa',status:'CLOSED',capacity:0,
-			weekStart: selectedWeekStart
-		  });
-		}else{
-		  const targets = cachedData.filter(s=>s.weekday===day && s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
-		  for(const s of targets){ await api.remove(token, s.id); }
-		}
-		await refresh();
-	  }catch(err){
-		alert(err.message);
-		el.checked = !el.checked;
-	  }
-	}
-  </script>
 </head>
-<body class="bg-slate-950 text-slate-200 selection:bg-cyan-500/30">
-  <!-- HEADER -->
+<body class="h-full bg-slate-950 text-slate-200 selection:bg-cyan-500/30">
   <header class="sticky top-0 z-20 bg-gradient-to-r from-slate-950/90 via-slate-900/90 to-slate-900/90 backdrop-blur border-b border-white/10">
-    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-      <div class="flex items-center gap-3">
+    <div class="max-w-7xl mx-auto px-3 sm:px-4 py-4 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+      <div class="flex items-center gap-3 min-w-0">
         <div class="h-9 w-9 grid place-content-center rounded-xl bg-cyan-500/15 text-cyan-300">🩺</div>
-        <div>
-          <h1 class="text-base sm:text-lg font-semibold tracking-wide">Admin — Phòng Khám Thành Ý</h1>
+        <div class="truncate">
+          <h1 class="text-base sm:text-lg font-semibold tracking-wide truncate">Admin — Phòng Khám Thành Ý</h1>
           <div class="text-xs text-slate-400">Quản lý lịch khám theo tuần</div>
         </div>
       </div>
-      <a href="/" class="text-slate-300 hover:text-white text-sm">Trang chủ</a>
+      <a href="/" class="text-slate-300 hover:text-white text-sm underline-offset-2 hover:underline">Trang chủ</a>
     </div>
   </header>
 
-  <!-- BG DECOR -->
   <div class="fixed inset-0 -z-10 opacity-50 bg-[radial-gradient(circle_at_15%_20%,rgba(56,189,248,0.35),transparent_40%),radial-gradient(circle_at_85%_10%,rgba(99,102,241,0.35),transparent_35%),radial-gradient(circle_at_50%_90%,rgba(20,184,166,0.25),transparent_38%)]"></div>
 
-  <main class="max-w-7xl mx-auto px-4 py-6 space-y-4">
-
+  <main class="max-w-7xl mx-auto px-3 sm:px-4 py-6 space-y-4">
     <!-- AUTH CARD -->
-    <section id="auth" class="glass card p-4" style="display:none">
-      <form name="loginForm" onsubmit="onLogin(event)" class="space-y-3">
+    <section id="auth" class="glass card p-4 hidden">
+      <form name="loginForm" onsubmit="onLogin(event)" class="space-y-3" autocomplete="on">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
-            <label class="block text-slate-300 text-sm mb-1">Email</label>
-            <input class="field" name="email" type="email" placeholder="admin@thanhy.vn" required />
+            <label class="block text-slate-300 text-sm mb-1" for="email">Email</label>
+            <input class="field" id="email" name="email" type="email" placeholder="admin@thanhy.vn" required />
           </div>
           <div>
-            <label class="block text-slate-300 text-sm mb-1">Mật khẩu</label>
-            <input class="field" name="password" type="password" placeholder="••••••••" required />
+            <label class="block text-slate-300 text-sm mb-1" for="password">Mật khẩu</label>
+            <input class="field" id="password" name="password" type="password" placeholder="••••••••" required />
           </div>
           <div class="flex items-end">
             <button class="btn btn-primary w-full" type="submit">Đăng nhập</button>
@@ -436,10 +94,9 @@
     </section>
 
     <!-- PANEL -->
-    <section id="panel" style="display:none" class="space-y-4">
-
-      <!-- QUICK STATS & CONTROLS -->
+    <section id="panel" class="space-y-4 hidden">
       <div class="panelgrid">
+        <!-- Form -->
         <div class="glass card p-4 space-y-3">
           <div class="flex items-center justify-between">
             <h2 class="font-medium">Tạo / sửa khung giờ</h2>
@@ -449,8 +106,8 @@
           <form name="slotForm" onsubmit="onSubmit(event)" class="space-y-3">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <label class="block text-slate-300 text-sm mb-1">Thứ</label>
-                <select class="field" name="weekday">
+                <label class="block text-slate-300 text-sm mb-1" for="weekday">Thứ</label>
+                <select class="field" id="weekday" name="weekday" aria-label="Chọn thứ">
                   <option value="1">Thứ 2</option>
                   <option value="2">Thứ 3</option>
                   <option value="3">Thứ 4</option>
@@ -461,23 +118,23 @@
                 </select>
               </div>
               <div>
-                <label class="block text-slate-300 text-sm mb-1">Giờ bắt đầu</label>
-                <input class="field" name="start" type="time" required />
+                <label class="block text-slate-300 text-sm mb-1" for="start">Giờ bắt đầu</label>
+                <input class="field" id="start" name="start" type="time" required />
               </div>
               <div>
-                <label class="block text-slate-300 text-sm mb-1">Giờ kết thúc</label>
-                <input class="field" name="end" type="time" required />
+                <label class="block text-slate-300 text-sm mb-1" for="end">Giờ kết thúc</label>
+                <input class="field" id="end" name="end" type="time" required />
               </div>
               <div>
-                <label class="block text-slate-300 text-sm mb-1">Trạng thái</label>
-                <select class="field" name="status">
+                <label class="block text-slate-300 text-sm mb-1" for="status">Trạng thái</label>
+                <select class="field" id="status" name="status">
                   <option value="AVAILABLE">Mở</option>
                   <option value="CLOSED">Đóng</option>
                 </select>
               </div>
               <div class="md:col-span-2">
-                <label class="block text-slate-300 text-sm mb-1">Ghi chú</label>
-                <textarea class="field min-h-[42px]" name="note" placeholder="Ghi chú thêm (nếu có)"></textarea>
+                <label class="block text-slate-300 text-sm mb-1" for="note">Ghi chú</label>
+                <textarea class="field min-h-[42px]" id="note" name="note" placeholder="Ghi chú thêm (nếu có)"></textarea>
               </div>
             </div>
             <div class="flex flex-wrap gap-2 items-center">
@@ -485,6 +142,7 @@
               <button class="btn btn-muted" type="button" onclick="document.forms.slotForm.reset();editingId=null;document.getElementById('submitBtn').textContent='Thêm mới'">Làm mới</button>
               <div class="flex-1"></div>
               <div class="flex items-center gap-2">
+                <label class="sr-only" for="closeDay">Đóng ngày</label>
                 <select id="closeDay" class="field w-auto">
                   <option value="" selected>Đóng ngày (chọn thứ)</option>
                   <option value="1">Thứ 2</option>
@@ -502,16 +160,18 @@
           </form>
         </div>
 
+        <!-- Controls -->
         <div class="glass card p-4 space-y-3">
           <div class="flex items-center justify-between flex-wrap gap-3">
             <div>
               <div class="text-sm text-slate-400">Tuần làm việc</div>
               <div class="flex items-center gap-2 mt-1">
+                <label class="sr-only" for="weekSelect">Chọn tuần</label>
                 <select id="weekSelect" class="field w-auto"></select>
                 <span class="text-xs text-slate-400">Tổng slot: <span id="count">0</span></span>
               </div>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
               <button class="btn btn-danger" onclick="deleteAllSlots(false)">Xoá tất cả lịch</button>
               <button class="btn btn-success" onclick="applyDefaults()">Áp dụng lịch mặc định</button>
             </div>
@@ -526,7 +186,7 @@
             <label class="flex items-center gap-2"><input id="toggleClose_6" type="checkbox" onchange="onToggleClosed(6,this)" class="accent-rose-500"> T7</label>
             <label class="flex items-center gap-2"><input id="toggleClose_0" type="checkbox" onchange="onToggleClosed(0,this)" class="accent-rose-500"> CN</label>
           </div>
-          <div class="text-xs text-slate-400">Bật công tắc để tạo slot Đóng cửa (00:00–23:59). Tắt để mở lại ngày đó.</div>
+          <p class="text-xs text-slate-400">Bật công tắc để tạo slot Đóng cửa (00:00–23:59). Tắt để mở lại ngày đó.</p>
         </div>
       </div>
 
@@ -554,9 +214,266 @@
   <div id="toast" class="toast"></div>
 
   <script>
-    // Init auth view (GIỮ NGUYÊN HÀNH VI)
-	if(token){ document.getElementById('panel').style.display='block'; initWeekSelect(); refresh(); }
-	else { document.getElementById('auth').style.display='block'; }
+    // ---------- API ----------
+    const weekdays = ['CN','T2','T3','T4','T5','T6','T7'];
+    const api = {
+      login: async (email,password)=>{
+        const r = await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
+        if(!r.ok) throw new Error('Đăng nhập thất bại');
+        return r.json();
+      },
+      list: async (weekStart) => {
+        const r = await fetch('/api/schedule' + (weekStart?`?week=${weekStart}`:''));
+        if (!r.ok) throw new Error('API /api/schedule lỗi: ' + r.status);
+        return r.json();
+      },
+      create: async (token,payload)=>{
+        const r = await fetch('/api/admin/slots',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(payload)});
+        if(!r.ok) throw new Error('Tạo thất bại');
+        return r.json();
+      },
+      update: async (token,id,payload)=>{
+        const r = await fetch('/api/admin/slots/'+id,{method:'PUT',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(payload)});
+        if(!r.ok) throw new Error('Cập nhật thất bại');
+        return r.json();
+      },
+      remove: async (token,id)=>{
+        const r = await fetch('/api/admin/slots/'+id,{method:'DELETE',headers:{'Authorization':'Bearer '+token}});
+        if(!r.ok) throw new Error('Xoá thất bại');
+        return r.json();
+      }
+    }
+
+    // ---------- State ----------
+    let token = localStorage.getItem('ty_token')||'';
+    let editingId = null;
+    let cachedData = [];
+    const DEFAULT_DOCTOR = 'Ths BSNT Phan Thị Minh Ý';
+    const DEFAULT_ROOM = 'PK SPK Thành Ý';
+    const DEFAULT_CAPACITY = 10;
+
+    function isClosedAllDay(day){
+      return cachedData.some(s=>s.weekday===day && s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
+    }
+
+    function toast(msg,type='info'){
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.className = 'toast px-4 py-3 rounded-lg text-white shadow-lg ' + (type==='error'?'bg-rose-500':'bg-emerald-600');
+      el.style.display='block';
+      setTimeout(()=>{ el.style.display='none' }, 2200);
+    }
+
+    async function refresh(){
+      const tbody = document.getElementById('tbody');
+      tbody.innerHTML = '';
+      // skeleton rows
+      for(let i=0;i<4;i++){
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="6" class="py-6 text-center text-slate-400 animate-pulse">Đang tải…</td>';
+        tbody.appendChild(tr);
+      }
+
+      const data = await api.list(selectedWeekStart);
+      cachedData = data;
+      tbody.innerHTML = '';
+
+      data.forEach(s=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="whitespace-nowrap text-slate-300">${s.id}</td>
+          <td class="whitespace-nowrap">${weekdays[s.weekday]}</td>
+          <td class="whitespace-nowrap">${s.start} - ${s.end}</td>
+          <td class="whitespace-nowrap">${s.status==='CLOSED' ? '<span class="chip chip-closed">Đóng</span>' : '<span class="chip chip-open">Mở</span>'}</td>
+          <td class="text-slate-300">${s.note||''}</td>
+          <td class="whitespace-nowrap">
+            <div class="flex flex-wrap gap-2">
+              <button class="btn btn-primary" onclick="onEdit(${s.id})" aria-label="Sửa">✏️<span class="hidden sm:inline">Sửa</span></button>
+              <button class="btn btn-muted" onclick="onDelete(${s.id})" aria-label="Xoá">🗑️<span class="hidden sm:inline">Xoá</span></button>
+            </div>
+          </td>`;
+        tbody.appendChild(tr);
+      })
+
+      for(let d=0; d<7; d++){
+        const cb = document.getElementById('toggleClose_'+d);
+        if(cb) cb.checked = isClosedAllDay(d);
+      }
+      document.getElementById('count').textContent = data.length;
+    }
+
+    // ---------- Week helpers ----------
+    let selectedWeekStart = '';
+    const toISODate = (d)=>{ const d2 = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); return d2.toISOString().slice(0,10) };
+    const getMonday = (d)=>{ const t = new Date(d); const day = t.getDay(); const diff = (day===0 ? -6 : 1 - day); t.setDate(t.getDate()+diff); t.setHours(0,0,0,0); return t };
+    const addDays = (d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return x };
+    function isoWeekNumber(d){ const date=new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const dayNum=(date.getUTCDay()+6)%7; date.setUTCDate(date.getUTCDate()-dayNum+3); const firstThursday=new Date(Date.UTC(date.getUTCFullYear(),0,4)); return 1+Math.round(((date-firstThursday)/86400000-3)/7) }
+    function labelForWeek(monday){ const week=isoWeekNumber(monday); const start=monday; const end=addDays(monday,6); const fmt=(d)=> String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0'); return `W${String(week).padStart(2,'0')} ${fmt(start)} - ${fmt(end)}` }
+    function getWeekCandidates(){ const today=new Date(); const m0=getMonday(today); return [0,1,2,3].map(i=>{ const m=addDays(m0,i*7); return { iso: toISODate(m), label: labelForWeek(m) } }) }
+
+    function formToPayload(){
+      const f = document.forms.slotForm;
+      return {
+        weekday: parseInt(f.weekday.value,10),
+        start: f.start.value,
+        end: f.end.value,
+        doctor: DEFAULT_DOCTOR,
+        room: DEFAULT_ROOM,
+        note: f.note.value.trim(),
+        status: f.status.value,
+        capacity: DEFAULT_CAPACITY,
+        weekStart: selectedWeekStart
+      };
+    }
+
+    async function onSubmit(e){
+      e.preventDefault();
+      try{
+        const payload = formToPayload();
+        const conflicts = findConflicts(payload.weekday, payload.start, payload.end, editingId);
+        if(conflicts.length){
+          const list = conflicts.map(s=>`#${s.id} ${s.start}-${s.end} ${s.status==='CLOSED'?'Đóng':'Mở'}`).join('\n');
+          alert('Khung giờ bạn nhập bị giao thoa với:\n' + list + '\nVui lòng sửa hoặc xoá trước.');
+          return;
+        }
+        if(editingId){ await api.update(token, editingId, payload); toast('Đã cập nhật khung giờ') }
+        else { await api.create(token, payload); toast('Đã thêm khung giờ mới') }
+        document.forms.slotForm.reset();
+        editingId = null;
+        document.getElementById('submitBtn').textContent = 'Thêm mới';
+        await refresh();
+      }catch(err){ toast(err.message,'error') }
+    }
+
+    async function onLogin(e){
+      e.preventDefault();
+      try{
+        const f = document.forms.loginForm;
+        const { token: t } = await api.login(f.email.value.trim(), f.password.value);
+        token = t; localStorage.setItem('ty_token', t);
+        document.getElementById('auth').classList.add('hidden');
+        document.getElementById('panel').classList.remove('hidden');
+        initWeekSelect();
+        await refresh();
+        toast('Đăng nhập thành công');
+      }catch(err){ alert(err.message) }
+    }
+
+    function onEdit(id){
+      const tr = [...document.querySelectorAll('#tbody tr')].find(r=>r.firstElementChild.textContent==id);
+      if(!tr) return;
+      const f = document.forms.slotForm;
+      const tds = tr.children;
+      editingId = id;
+      f.weekday.value = ['CN','T2','T3','T4','T5','T6','T7'].indexOf(tds[1].textContent);
+      const [start,end] = tds[2].textContent.split(' - ');
+      f.start.value=start; f.end.value=end;
+      f.status.value = tds[3].textContent.includes('Đóng')?'CLOSED':'AVAILABLE';
+      f.note.value = tds[4].textContent;
+      document.getElementById('submitBtn').textContent = 'Cập nhật';
+      window.scrollTo({top:0,behavior:'smooth'});
+    }
+
+    function initWeekSelect(){
+      const sel = document.getElementById('weekSelect');
+      const items = getWeekCandidates();
+      sel.innerHTML = '';
+      items.forEach((w,i)=>{
+        const opt = document.createElement('option');
+        opt.value = w.iso; opt.textContent = (i===0 ? '(Tuần này) ' : '') + w.label; sel.appendChild(opt);
+      });
+      selectedWeekStart = items[0].iso;
+      sel.value = selectedWeekStart;
+      sel.addEventListener('change', async ()=>{ selectedWeekStart = sel.value; await refresh(); });
+    }
+
+    const toMin = (t)=>{ const [h,m]=t.split(':').map(Number); return h*60+m };
+    const isOverlap = (aStart,aEnd,bStart,bEnd)=> Math.min(toMin(aEnd), toMin(bEnd)) > Math.max(toMin(aStart), toMin(bStart));
+    function findConflicts(weekday, start, end, exceptId=null){
+      return cachedData.filter(s => s.weekday===weekday && s.id!==exceptId && isOverlap(s.start, s.end, start, end));
+    }
+
+    async function onDelete(id){
+      if(!confirm('Xoá khung giờ #' + id + ' ?')) return;
+      try{ await api.remove(token, id); await refresh(); toast('Đã xoá khung giờ') }catch(err){ toast(err.message,'error') }
+    }
+
+    function logout(){ localStorage.removeItem('ty_token'); location.reload(); }
+
+    async function quickCloseDay(){
+      const dayStr = document.getElementById('closeDay').value;
+      if(dayStr===''){ alert('Chọn thứ cần đóng'); return }
+      const day = parseInt(dayStr,10);
+      const reason = document.getElementById('closeReason').value.trim() || 'Nghỉ';
+
+      try{
+        const existsAll = cachedData.filter(s=>s.weekday===day);
+        for(const s of existsAll){ await api.remove(token, s.id) }
+        await api.create(token,{ weekday: day, start: '00:00', end: '23:59', doctor: '-', room: '-', note: reason, status: 'CLOSED', capacity: 0, weekStart: selectedWeekStart });
+        document.getElementById('closeDay').value='';
+        document.getElementById('closeReason').value='';
+        await refresh();
+        toast('Đã đóng cả ngày');
+      }catch(err){ toast(err.message,'error') }
+    }
+
+    async function applyDefaults(){
+      const sundayNote = 'CN có Test tiểu đường thai kì, các Bầu lưu ý phải nhịn ăn trước đó 8 tiếng.';
+      const doctor = DEFAULT_DOCTOR; const room = DEFAULT_ROOM;
+      const plan = [];
+      plan.push({weekday:0,start:'07:00',end:'11:00',doctor,room,note:sundayNote,status:'AVAILABLE',capacity:10, weekStart: selectedWeekStart});
+      for(let d=1; d<=6; d++) plan.push({weekday:d,start:'17:00',end:'20:00',doctor,room,note:'',status:'AVAILABLE',capacity:10, weekStart: selectedWeekStart});
+
+      const logs = []; let created = 0;
+      try{
+        for(const p of plan){
+          const exactDup = cachedData.some(s=> s.weekday===p.weekday && s.start===p.start && s.end===p.end && s.status===p.status);
+          if(exactDup){ logs.push(`Bỏ qua do đã tồn tại: Thứ ${p.weekday} ${p.start}-${p.end}`); continue }
+          let conflicts = findConflicts(p.weekday, p.start, p.end);
+          const closedAllDay = conflicts.filter(s=>s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
+          if(closedAllDay.length){ for(const s of closedAllDay){ await api.remove(token, s.id) } cachedData = await api.list(selectedWeekStart); conflicts = findConflicts(p.weekday, p.start, p.end); }
+          if(conflicts.length){ const list = conflicts.map(s=>`#${s.id} ${s.start}-${s.end} ${s.status==='CLOSED'?'Đóng':'Mở'}`).join(', '); logs.push(`Không thể tạo Thứ ${p.weekday} ${p.start}-${p.end} vì giao thoa với: ${list}`); continue }
+          await api.create(token, p); created++; cachedData = await api.list(selectedWeekStart);
+        }
+        await refresh();
+        alert(`Áp dụng lịch mặc định: tạo mới ${created} slot.\n` + (logs.length ? ('Ghi chú:\n- ' + logs.join('\n- ')) : ''));
+      }catch(err){ alert(err.message) }
+    }
+
+    async function deleteAllSlots(reseed){
+      if(!token){ alert('Vui lòng đăng nhập'); return }
+      if(!confirm('Bạn chắc chắn muốn XOÁ TẤT CẢ lịch? Hành động này không thể hoàn tác.')) return;
+      const confirmWord = prompt('Gõ "XOA" để xác nhận:');
+      if((confirmWord || '').toUpperCase() !== 'XOA'){ alert('Huỷ thao tác.'); return }
+      try{
+        const url = '/api/admin/slots/purge' + (reseed ? '?defaults=1' : '');
+        const r = await fetch(url, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token } });
+        if(!r.ok){ const t = await r.json().catch(()=>({})); throw new Error(t.error || 'Xoá tất cả thất bại') }
+        const res = await r.json();
+        alert(`Đã xoá ${res.deleted || 0} slot.` + (res.reseeded ? '\nĐã tạo lại lịch mặc định.' : ''));
+        await refresh();
+      }catch(err){ alert(err.message) }
+    }
+
+    async function onToggleClosed(day, el){
+      try{
+        if(el.checked){
+          const targetsAll = cachedData.filter(s=>s.weekday===day);
+          for(const s of targetsAll){ await api.remove(token, s.id) }
+          await api.create(token,{ weekday:day,start:'00:00',end:'23:59', doctor:'-',room:'-',note:'Đóng cửa',status:'CLOSED',capacity:0, weekStart: selectedWeekStart });
+        }else{
+          const targets = cachedData.filter(s=>s.weekday===day && s.status==='CLOSED' && s.start==='00:00' && s.end==='23:59');
+          for(const s of targets){ await api.remove(token, s.id) }
+        }
+        await refresh();
+      }catch(err){ alert(err.message); el.checked = !el.checked }
+    }
+
+    // Init auth view
+    (function init(){
+      if(token){ document.getElementById('panel').classList.remove('hidden'); initWeekSelect(); refresh(); }
+      else { document.getElementById('auth').classList.remove('hidden'); }
+    })();
   </script>
 </body>
 </html>
